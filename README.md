@@ -1,6 +1,6 @@
-# ⚡ Octo - Plataforma de Tutoriais e Procedimentos com Vídeo & IA
+# ⚡ Octor - Plataforma de Tutoriais e Procedimentos com Vídeo & IA
 
-Inspirado no **Tango / Scribe**, o **Octo** grava ações no navegador (cliques, inputs, navegação) e transforma em procedimentos passo a passo com capturas de tela anotadas, descrições geradas por IA e, opcionalmente, vídeos narrados com legendas e avatar.
+Inspirado no **Tango / Scribe**, o **Octor** grava ações no navegador (cliques, inputs, navegação) e transforma em procedimentos passo a passo com capturas de tela anotadas, descrições geradas por IA e, opcionalmente, vídeos narrados com legendas e avatar.
 
 ---
 
@@ -32,7 +32,7 @@ octo/
 
 ## 🚀 Como Executar
 
-Repositório: https://github.com/viituux/octo
+Repositório: https://github.com/viituux/octor
 
 Em uma instalação nova, execute `pip install -r requirements.txt` dentro do ambiente virtual do backend e copie `backend/.env.example` para `backend/.env`, configurando suas chaves apenas localmente.
 
