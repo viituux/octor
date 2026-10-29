@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "autoguide": {
+    "octo": {
       "projectType": "application",
       "schematics": {},
       "root": "",
@@ -13,7 +13,7 @@
         "build": {
           "builder": "@angular-devkit/build-angular:application",
           "options": {
-            "outputPath": "dist/autoguide",
+            "outputPath": "dist/octo",
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
@@ -50,10 +50,10 @@
           "builder": "@angular-devkit/build-angular:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "autoguide:build:production"
+              "buildTarget": "octo:build:production"
             },
             "development": {
-              "buildTarget": "autoguide:build:development"
+              "buildTarget": "octo:build:development"
             }
           },
           "defaultConfiguration": "development"

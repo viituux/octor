@@ -1,0 +1,9 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const vm=require('node:vm');const fs=require('node:fs');const path=require('node:path');
+const root=path.resolve(__dirname,'../..');const ts=require(root+'/frontend/node_modules/typescript');
+const source=ts.transpileModule(fs.readFileSync(root+'/frontend/src/app/components/guide-editor/step-capture.component.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,experimentalDecorators:true}}).outputText;
+function component(step){const exports={};vm.runInNewContext(source,{exports,require:name=>name==='@angular/core'?{Component:()=>type=>type,Input:()=>()=>{},Output:()=>()=>{},EventEmitter:class{emit(){}}}:{},Image:class{naturalWidth=1920;naturalHeight=1080;set src(value){this.onload();}}});const c=new exports.StepCaptureComponent();c.step=step;c.ngOnChanges();return c;}
+function step(x,y){return {id:1,screenshot_url:'test.png',click_x:x,click_y:y,annotations:[{type:'capture_metadata',viewport_width:1440,viewport_height:900,element_rect:{left:x,top:y,width:60,height:40}}]};}
+test('zoom keeps edge targets within valid image bounds',()=>{for(const [x,y] of [[0,0],[1380,860],[0,860],[1380,0]]){const c=component(step(x,y));const [left,top,w,h]=c.viewBox.split(' ').map(Number);assert.ok(left>=0&&top>=0&&left+w<=1440&&top+h<=900);assert.ok(x>=left&&y>=top&&x+60<=left+w&&y+40<=top+h);}});
+test('full screen restores entire capture',()=>{const c=component(step(400,300));c.reset();assert.equal(c.viewBox,'0 0 1440 900');});
+test('saved zoom is clamped to supported limits',()=>{const s=step(400,300);s.annotations.push({type:'image_view',zoom:99});const c=component(s);assert.equal(c.zoom,4);});
+test('legacy captures use actual image ratio without viewport metadata',()=>{const c=component({id:1,screenshot_url:'old.png',annotations:[]});assert.equal(c.width,1920);assert.equal(c.height,1080);assert.equal(c.viewBox,'0 0 1920 1080');});

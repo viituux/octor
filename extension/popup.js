@@ -39,6 +39,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateRecordingUI(data.isRecording, data.isPaused, data.recordedSteps?.length || 0, data.guideTitle);
   }
 
+  document.getElementById('btnBrowserLogin').addEventListener('click', () => {
+    chrome.tabs.create({url:'http://localhost:4200/login?extension='+chrome.runtime.id});
+  });
   // Login
   btnLogin.addEventListener("click", async () => {
     authError.classList.add("hidden");
@@ -65,6 +68,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       const loginData = await res.json();
+      const current = await chrome.storage.local.get(["isRecording", "currentUser", "playback"]);
+      if ((current.isRecording || current.playback) && current.currentUser !== username) throw new Error("Finalize a gravação ou tutorial antes de trocar de conta.");
       await chrome.storage.local.set({
         authToken: loginData.access,
         refreshToken: loginData.refresh,
@@ -87,47 +92,77 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Logout
   btnLogout.addEventListener("click", async () => {
+    const active=await chrome.storage.local.get(["isRecording","playback"]);
+    if(active.isRecording || active.playback){showRecorderError("Finalize a gravação ou tutorial antes de sair.");return;}
     await chrome.storage.local.remove(["authToken", "refreshToken", "currentUser"]);
     recorderSection.classList.add("hidden");
     authSection.classList.remove("hidden");
   });
 
-  // Iniciar Gravação
-  btnStart.addEventListener("click", () => {
-    const title = guideTitleInput.value.trim() || "Novo Guia";
-    chrome.runtime.sendMessage({ action: "START_RECORDING", title }, () => {
-      updateRecordingUI(true, false, 0, title);
-    });
+  function showRecorderError(message, kind = 'error') {
+    recorderMsg.textContent = message;
+    recorderMsg.className = 'error-msg ' + kind;
+  }
+  async function refreshRecorder() {
+    const state = await chrome.storage.local.get(['isRecording', 'isPaused', 'recordedSteps', 'guideTitle', 'captureError', 'liveVoice']);
+    updateRecordingUI(state.isRecording, state.isPaused, state.recordedSteps?.length || 0, state.guideTitle);
+    if (state.captureError) showRecorderError(state.captureError);
+    document.getElementById('voiceStatus').textContent = state.liveVoice ? 'Microfone vinculado à gravação. Mantenha a aba de áudio aberta.' : '';
+    document.getElementById('btnFinishSilent').classList.toggle('hidden', !state.liveVoice);
+  }
+  document.getElementById('btnStopTutorial').addEventListener('click', async () => {
+    await chrome.storage.local.remove('playback');
+    recorderMsg.classList.add('hidden');
+    document.getElementById('btnStopTutorial').classList.add('hidden');
   });
+  const { playback } = await chrome.storage.local.get('playback');
+  document.getElementById('btnStopTutorial').classList.toggle('hidden', !playback);
+  await refreshRecorder();
 
-  // Pausar / Continuar
-  btnPause.addEventListener("click", async () => {
-    const { isPaused } = await chrome.storage.local.get(["isPaused"]);
-    const nextPaused = !isPaused;
-    chrome.runtime.sendMessage({ action: "PAUSE_RECORDING", pause: nextPaused }, () => {
-      chrome.storage.local.get(["recordedSteps", "guideTitle"], (st) => {
-        updateRecordingUI(true, nextPaused, st.recordedSteps?.length || 0, st.guideTitle);
-      });
-    });
-  });
-
-  // Finalizar
-  btnFinish.addEventListener("click", () => {
-    recorderMsg.classList.add("hidden");
-    btnFinish.disabled = true;
-    btnFinish.textContent = "Enviando...";
-
-    chrome.runtime.sendMessage({ action: "FINISH_RECORDING" }, (response) => {
-      btnFinish.disabled = false;
-      btnFinish.textContent = "✅ Finalizar";
-
-      if (response && response.success) {
-        window.close();
-      } else {
-        recorderMsg.textContent = response?.error || "Erro ao salvar guia.";
-        recorderMsg.classList.remove("hidden");
+  btnStart.addEventListener('click', async () => {
+    recorderMsg.classList.add('hidden');
+    btnStart.disabled = true;
+    try {
+      if (document.getElementById('withMicrophone').checked) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!/^https?:\/\//i.test(tab?.url || '')) throw new Error('Abra o site que deseja gravar antes de iniciar.');
+        const url = chrome.runtime.getURL('live-recorder.html') + '?tab=' + tab.id + '&title=' + encodeURIComponent(guideTitleInput.value.trim() || 'Novo Guia');
+        await chrome.tabs.create({ url });
+        showRecorderError('Na aba que abriu, autorize o microfone para começar.', 'info'); return;
       }
-    });
+      const result = await chrome.runtime.sendMessage({ action: 'START_RECORDING', title: guideTitleInput.value.trim() || 'Novo Guia' });
+      if (result?.status !== 'started') throw new Error(result?.error || 'O gravador não respondeu. Recarregue a extensão.');
+    } catch (error) { showRecorderError(error.message); }
+    finally { btnStart.disabled = false; await refreshRecorder(); }
+  });
+
+  btnPause.addEventListener('click', async () => {
+    try {
+      const { isPaused } = await chrome.storage.local.get('isPaused');
+      const response = await chrome.runtime.sendMessage({ action: 'PAUSE_RECORDING', pause: !isPaused });
+      if (response?.error) throw new Error(response.error);
+      await refreshRecorder();
+    } catch (error) { showRecorderError(error.message); }
+  });
+  async function finish(skipAudio = false) {
+    btnFinish.disabled = true;
+    document.getElementById('btnFinishSilent').disabled = true;
+    btnFinish.textContent = 'Salvando...';
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'FINISH_RECORDING', skipAudio });
+      if (!response?.success) throw new Error(response?.error || 'Não foi possível salvar.');
+      await refreshRecorder();
+      showRecorderError('Guia salvo. O editor foi aberto em uma nova aba.', 'success');
+    } catch (error) { showRecorderError(error.message); }
+    finally {
+      btnFinish.disabled = false; btnFinish.textContent = '✅ Finalizar';
+      document.getElementById('btnFinishSilent').disabled = false;
+      await refreshRecorder();
+    }
+  }
+  btnFinish.addEventListener('click', () => finish());
+  document.getElementById('btnFinishSilent').addEventListener('click', () => {
+    if (confirm('Salvar o guia sem a gravação de voz?')) finish(true);
   });
 
   function updateRecordingUI(isRecording, isPaused, stepCount, title) {
@@ -157,6 +192,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Listener para atualizar contador em tempo real se o popup estiver aberto
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local") {
+      if (changes.authToken || changes.currentUser) {
+        chrome.storage.local.get(['authToken','currentUser']).then(state=>{
+          authSection.classList.toggle('hidden',!!state.authToken);
+          recorderSection.classList.toggle('hidden',!state.authToken);
+          userInfo.textContent=state.currentUser?'@'+state.currentUser:'';
+          refreshRecorder();
+        });
+      }
+      if (changes.playback) document.getElementById('btnStopTutorial').classList.toggle('hidden', !changes.playback.newValue);
+      if (changes.captureError?.newValue) showRecorderError(changes.captureError.newValue);
+      if (changes.isRecording || changes.isPaused || changes.liveVoice) refreshRecorder();
       if (changes.recordedSteps) {
         stepCounter.textContent = changes.recordedSteps.newValue?.length || 0;
       }

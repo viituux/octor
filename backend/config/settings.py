@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     # Local Apps
     "accounts",
     "guides",
+    "trainings",
     "videos",
     "ai",
 ]
@@ -120,7 +121,7 @@ CORS_ALLOW_HEADERS = [
 # REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "accounts.authentication.AccountJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -147,3 +148,12 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
 FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 
+
+# Public Google OAuth Web client ID. No client secret is used by this ID-token flow.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {"auth": "30/min"}
+
+# Server-managed AI credentials: never returned by account APIs.
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'gemini').strip()
+LLM_API_KEY = os.getenv('LLM_API_KEY', os.getenv('GEMINI_API_KEY', '')).strip()
+LLM_MODEL = os.getenv('LLM_MODEL', '').strip()

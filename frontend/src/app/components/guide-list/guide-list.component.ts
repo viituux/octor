@@ -1,165 +1,65 @@
-import { Component, OnInit } from '@angular/core';
+import { OctorIconComponent } from '../shared/octor-icon.component';
+import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule, Router } from '@angular/router';
-import { GuideService, Guide } from '../../services/guide.service';
+import { FormsModule } from '@angular/forms';
+import { RouterModule, Router, ActivatedRoute } from '@angular/router';
+import { forkJoin, firstValueFrom } from 'rxjs';
+import { GuideService, Guide, Workspace, TeamMember, TeamInvite } from '../../services/guide.service';
 import { AuthService } from '../../services/auth.service';
-import { SettingsModalComponent } from '../settings-modal/settings-modal.component';
 
-@Component({
-  selector: 'app-guide-list',
-  standalone: true,
-  imports: [CommonModule, RouterModule, SettingsModalComponent],
-  template: `
-    <div style="min-height: 100vh; background: var(--bg-main);">
-      <!-- Top Navbar -->
-      <header style="height: 64px; border-bottom: 1px solid var(--border-color); background: var(--bg-card); display: flex; align-items: center; justify-content: space-between; padding: 0 32px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <span style="font-size: 20px; font-weight: 700; color: #38bdf8;">⚡ AutoGuide</span>
-          <span style="font-size: 12px; background: #233152; color: #94a3b8; padding: 2px 8px; border-radius: 999px;">Painel de Procedimentos</span>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 16px;">
-          <button (click)="showSettings = true" style="background: #1e293b; border: 1px solid var(--border-color); color: #cbd5e1; padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-            ⚙️ Chaves de IA
-          </button>
-          <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #94a3b8;">
-            <div style="width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></div>
-            <span>Extensão Conectada (:8000)</span>
-          </div>
-          <span style="color: #64748b;">|</span>
-          <span style="font-size: 13px; color: #f8fafc; font-weight: 500;">user: {{ authService.currentUser()?.username || 'admin' }}</span>
-          <button (click)="logout()" style="background: none; border: 1px solid var(--border-color); color: #ef4444; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;">
-            Sair
-          </button>
-        </div>
-      </header>
-
-      <!-- Modal de Configurações -->
-      <app-settings-modal *ngIf="showSettings" (close)="showSettings = false"></app-settings-modal>
-
-      <!-- Main Container -->
-      <main style="max-width: 1200px; margin: 0 auto; padding: 36px 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px;">
-          <div>
-            <h1 style="font-size: 24px; font-weight: 700; color: #f8fafc;">Meus Guias e Procedimentos</h1>
-            <p style="font-size: 14px; color: #94a3b8; margin-top: 4px;">
-              Grave tarefas no navegador com a extensão do Chrome ou crie tutoriais manualmente.
-            </p>
-          </div>
-
-          <div style="display: flex; gap: 12px;">
-            <button (click)="loadGuides()" style="padding: 10px 16px; background: #1e293b; border: 1px solid var(--border-color); color: #fff; border-radius: 8px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-              🔄 Atualizar
-            </button>
-          </div>
-        </div>
-
-        <!-- Loading State -->
-        <div *ngIf="loading" style="text-align: center; padding: 60px 0; color: #94a3b8;">
-          Carregando procedimentos...
-        </div>
-
-        <!-- Empty State -->
-        <div *ngIf="!loading && guides.length === 0" style="text-align: center; padding: 80px 20px; background: var(--bg-card); border: 1px dashed var(--border-color); border-radius: 12px;">
-          <div style="font-size: 40px; margin-bottom: 12px;">🎯</div>
-          <h3 style="font-size: 18px; font-weight: 600; color: #f8fafc;">Nenhum guia gravado ainda</h3>
-          <p style="font-size: 14px; color: #94a3b8; max-width: 480px; margin: 8px auto 20px auto;">
-            Abra a extensão AutoGuide no Google Chrome, clique em <b>"Iniciar Gravação"</b> e navegue normalmente. Cada clique gerará um passo automaticamente aqui!
-          </p>
-        </div>
-
-        <!-- Grid of Guides -->
-        <div *ngIf="!loading && guides.length > 0" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px;">
-          <div 
-            *ngFor="let guide of guides"
-            style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.2s, border-color 0.2s;"
-          >
-            <!-- Thumbnail preview -->
-            <div style="height: 160px; background: #0f172a; position: relative; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border-color);">
-              <img 
-                *ngIf="guide.first_step_screenshot" 
-                [src]="guide.first_step_screenshot" 
-                alt="Screenshot Preview"
-                style="width: 100%; height: 100%; object-fit: cover;"
-              />
-              <div *ngIf="!guide.first_step_screenshot" style="color: #64748b; font-size: 13px;">
-                Sem screenshot
-              </div>
-              <span style="position: absolute; top: 12px; right: 12px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(4px); font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);">
-                {{ guide.step_count || 0 }} passos
-              </span>
-            </div>
-
-            <!-- Card Content -->
-            <div style="padding: 18px; flex: 1; display: flex; flex-direction: column;">
-              <h3 style="font-size: 16px; font-weight: 600; color: #f8fafc; margin-bottom: 6px;">{{ guide.title }}</h3>
-              <p style="font-size: 13px; color: #94a3b8; flex: 1; margin-bottom: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
-                {{ guide.description || 'Sem descrição cadastrada.' }}
-              </p>
-
-              <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #64748b; border-top: 1px solid var(--border-color); padding-top: 14px;">
-                <span>{{ guide.created_at | date:'dd/MM/yyyy HH:mm' }}</span>
-                <div style="display: flex; gap: 8px;">
-                  <button (click)="deleteGuide(guide.id, $event)" style="background: none; border: none; color: #ef4444; font-size: 12px; cursor: pointer; padding: 4px;">
-                    Excluir
-                  </button>
-                  <a [routerLink]="['/guides', guide.id]" style="background: #0284c7; color: #fff; padding: 6px 12px; border-radius: 6px; font-weight: 500; font-size: 12px;">
-                    Abrir Editor ➔
-                  </a>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-      </main>
-    </div>
-  `
-})
+type Section = 'drafts'|'published'|'shared'|'starred'|'team'|'trash'|'settings'|'updates'|'search';
+@Component({selector:'app-guide-list',standalone:true,imports:[OctorIconComponent,CommonModule,FormsModule,RouterModule],templateUrl:'./guide-list.component.html',styleUrls:['./guide-list.component.css']})
 export class GuideListComponent implements OnInit {
-  guides: Guide[] = [];
-  loading = true;
-  showSettings = false;
-
-  constructor(
-    private guideService: GuideService,
-    public authService: AuthService,
-    private router: Router
-  ) {}
-
-  ngOnInit(): void {
-    if (!this.authService.isAuthenticated()) {
-      this.router.navigate(['/login']);
-      return;
-    }
-    this.loadGuides();
+  guides:Guide[]=[];workspaces:Workspace[]=[];members:TeamMember[]=[];invitations:TeamInvite[]=[];
+  loading=true;teamLoading=false;errorMessage='';notice='';section:Section='drafts';workspaceId:number|null=null;
+  query='';view:'grid'|'list'='grid';mobileNav=false;saving=false;busyId:number|null=null;
+  dialog:''|'workspace'|'invite'|'share'|'new'|'capture'='';dialogError='';newName='';email='';inviteUrl='';newTitle='';
+  workspaceName='';selectedGuide:Guide|null=null;recipients:TeamMember[]=[];private previousFocus:HTMLElement|null=null;
+  readonly sections:{id:Section;label:string;icon:string}[]=[{id:'drafts',label:'Rascunhos',icon:'draft'},{id:'published',label:'Publicados',icon:'check'},{id:'shared',label:'Compartilhados comigo',icon:'shared'},{id:'starred',label:'Favoritos',icon:'star'},{id:'team',label:'Biblioteca da equipe',icon:'users'},{id:'trash',label:'Lixeira',icon:'trash'}];
+  constructor(public guideService:GuideService,public authService:AuthService,private router:Router,private route:ActivatedRoute){}
+  get displayName(){return this.authService.currentUser()?.first_name || this.authService.currentUser()?.username || 'Meu espaço';}
+  get initials(){return this.displayName.slice(0,1).toUpperCase();}
+  get emptyTitle(){return this.query?'Nenhum resultado':this.section==='trash'?'Nenhum guia na lixeira':this.section==='starred'?'Seus favoritos ficam por aqui':this.section==='shared'?'Conhecimento fica melhor compartilhado':'Um oceano de possibilidades';}
+  get emptyDescription(){return this.query?'Tente buscar por outro título.':this.section==='trash'?'Os guias que você excluir poderão ser restaurados aqui.':this.section==='starred'?'Marque a estrela de um guia para encontrá-lo rapidamente.':this.section==='shared'?'Guias compartilhados com você aparecerão nesta seção.':'Cada procedimento compartilhado leva sua equipe mais longe.';}
+  get workspace(){return this.workspaces.find(w=>w.id===this.workspaceId);}
+  get heading(){return ({drafts:'Rascunhos',published:'Publicados',shared:'Compartilhados comigo',starred:'Favoritos',team:'Biblioteca da equipe',trash:'Lixeira',settings:'Configurações e membros',updates:'Novidades do Octo',search:'Buscar procedimentos'} as Record<Section,string>)[this.section];}
+  get subtitle(){return ({drafts:'Ideias em andamento, prontas para virar conhecimento.',published:'Procedimentos revisados e organizados neste espaço.',shared:'Guias que outras pessoas compartilharam diretamente com você.',starred:'Seus procedimentos importantes, sempre por perto.',team:'Guias publicados nos espaços dos quais você participa.',trash:'Seus guias excluídos ficam aqui até serem restaurados ou removidos definitivamente.',settings:'Organize seu espaço e gerencie quem faz parte dele.',updates:'Conheça os recursos disponíveis no seu Octo.',search:'Encontre guias pelo título ou pela descrição.'} as Record<Section,string>)[this.section];}
+  ngOnInit(){if(!this.authService.isAuthenticated()){this.router.navigate(['/login']);return;}const value=localStorage.getItem('octor-library-view');if(value==='list')this.view='list';const id=Number(this.route.snapshot.queryParamMap.get('workspace'));if(id>0){this.workspaceId=id;this.section='team';}this.loadGuides();}
+  private matches(g:Guide,s:Section):boolean {
+    if(s==='trash')return !!g.trashed_at&&g.can_edit!==false;
+    if(g.trashed_at)return false;
+    const inSpace=(g.workspace??null)===this.workspaceId;
+    if(s==='drafts')return inSpace&&g.can_edit!==false&&g.status==='draft';
+    if(s==='published')return inSpace&&g.can_edit!==false&&g.status==='published';
+    if(s==='shared')return !!g.shared_directly&&g.can_edit===false;
+    if(s==='starred')return !!g.is_favorite&&(!this.workspaceId||inSpace);
+    if(s==='team')return !!g.workspace&&g.status==='published'&&(!this.workspaceId||inSpace);
+    return s==='search';
   }
-
-  loadGuides(): void {
-    this.loading = true;
-    this.guideService.getGuides().subscribe({
-      next: (data) => {
-        this.guides = data;
-        this.loading = false;
-      },
-      error: () => {
-        this.loading = false;
-      }
-    });
-  }
-
-  deleteGuide(id: number, event: Event): void {
-    event.stopPropagation();
-    if (confirm('Deseja realmente excluir este guia?')) {
-      this.guideService.deleteGuide(id).subscribe(() => {
-        this.guides = this.guides.filter(g => g.id !== id);
-      });
-    }
-  }
-
-  logout(): void {
-    this.authService.logout();
-    this.router.navigate(['/login']);
-  }
+  count(s:Section){return this.guides.filter(g=>this.matches(g,s)).length;}
+  get filteredGuides(){const q=this.query.trim().toLocaleLowerCase('pt-BR');return this.guides.filter(g=>this.matches(g,this.section)&&(!q||(g.title+' '+g.description).toLocaleLowerCase('pt-BR').includes(q)));}
+  setSection(s:Section){this.section=s;this.query='';this.mobileNav=false;this.notice='';if(s==='settings')void this.loadTeam();if(s==='search')queueMicrotask(()=>document.getElementById('guide-search')?.focus());}
+  changeWorkspace(){this.workspaceName=this.workspace?.name||'';this.setSection(this.section==='settings'?'settings':'drafts');}
+  setView(v:'grid'|'list'){this.view=v;localStorage.setItem('octor-library-view',v);}
+  loadGuides(){this.loading=true;this.errorMessage='';forkJoin({guides:this.guideService.getGuides(true),spaces:this.guideService.workspaces()}).subscribe({next:data=>{this.guides=data.guides;this.workspaces=data.spaces;if(this.workspaceId&&!this.workspace)this.workspaceId=null;this.workspaceName=this.workspace?.name||'';this.loading=false;},error:()=>{this.loading=false;this.errorMessage='Não foi possível carregar a biblioteca. Tente atualizar novamente.';}});}
+  async loadTeam(){this.members=[];this.invitations=[];const id=this.workspaceId;if(!id)return;this.teamLoading=true;try{const members=await firstValueFrom(this.guideService.members(id));if(this.workspaceId!==id)return;this.members=members;if(this.workspace?.role==='owner')this.invitations=await firstValueFrom(this.guideService.invites(id));}catch(e:any){this.errorMessage=e.error?.detail||'Não foi possível carregar a equipe.';}finally{this.teamLoading=false;}}
+  openDialog(kind:typeof this.dialog,guide?:Guide){this.previousFocus=document.activeElement as HTMLElement;this.dialog=kind;this.dialogError='';this.email='';this.inviteUrl='';this.newName='';this.newTitle='';this.selectedGuide=guide||null;this.recipients=[];queueMicrotask(()=>document.getElementById('library-dialog-title')?.focus());if(kind==='share'&&guide)this.guideService.guideShares(guide.id).subscribe({next:items=>this.recipients=items,error:()=>this.dialogError='Não foi possível carregar os acessos.'});}
+  closeDialog(){if(this.saving)return;this.dialog='';this.previousFocus?.focus();}
+  @HostListener('document:keydown',['$event']) onKey(e:KeyboardEvent){if(!this.dialog && (e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='k'){e.preventDefault();this.setSection('search');return;}if(!this.dialog && e.key==='Escape'){this.mobileNav=false;return;}if(!this.dialog)return;if(e.key==='Escape'){e.preventDefault();this.closeDialog();}if(e.key==='Tab'){const all=Array.from(document.querySelectorAll<HTMLElement>('#library-dialog button:not([disabled]),#library-dialog input,#library-dialog select,#library-dialog a')).filter(n=>n.offsetParent!==null);if(!all.length)return;const first=all[0],last=all[all.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}}
+  invitePeople(){if(!this.workspaceId){this.openDialog('workspace');return;}if(this.workspace?.role!=='owner'){this.notice='Peça ao administrador do espaço para convidar novas pessoas.';return;}this.openDialog('invite');}
+  async createWorkspace(){if(!this.newName.trim()||this.saving)return;this.saving=true;try{const w=await firstValueFrom(this.guideService.createWorkspace(this.newName.trim()));this.workspaces.push(w);this.workspaceId=w.id;this.workspaceName=w.name;this.dialog='';this.setSection('settings');this.notice='Espaço criado. Agora você pode convidar sua equipe.';}catch(e:any){this.dialogError=e.error?.detail||'Não foi possível criar o espaço.';}finally{this.saving=false;}}
+  async renameWorkspace(){if(!this.workspaceId||!this.workspaceName.trim()||this.saving)return;this.saving=true;try{const w=await firstValueFrom(this.guideService.renameWorkspace(this.workspaceId,this.workspaceName.trim()));this.workspaces=this.workspaces.map(item=>item.id===w.id?w:item);this.notice='Nome do espaço atualizado.';}catch{this.errorMessage='Não foi possível alterar o nome.';}finally{this.saving=false;}}
+  async createInvitation(){if(!this.workspaceId||!this.email.trim()||this.saving)return;this.saving=true;try{const invite=await firstValueFrom(this.guideService.invite(this.workspaceId,this.email.trim()));this.inviteUrl=location.origin+'/join/'+invite.token;this.notice='Convite criado. Compartilhe o link com a pessoa convidada.';this.invitations=await firstValueFrom(this.guideService.invites(this.workspaceId));}catch(e:any){this.dialogError=e.error?.detail||e.error?.email?.[0]||'Não foi possível criar o convite.';}finally{this.saving=false;}}
+  async copyInvite(){try{await navigator.clipboard.writeText(this.inviteUrl);this.notice='Link copiado.';}catch{this.dialogError='Selecione e copie o link exibido abaixo.';}}
+  async revokeInvitation(id:number){if(!this.workspaceId||this.saving)return;this.saving=true;try{this.invitations=await firstValueFrom(this.guideService.revokeInvite(this.workspaceId,id));this.notice='Convite revogado.';}catch{this.errorMessage='Não foi possível revogar o convite.';}finally{this.saving=false;}}
+  async removeMember(member:TeamMember){if(!this.workspaceId||this.saving||!confirm('Remover '+member.name+' deste espaço?'))return;this.saving=true;try{this.members=await firstValueFrom(this.guideService.removeMember(this.workspaceId,member.id));this.notice='Membro removido.';}catch(e:any){this.errorMessage=e.error?.detail||'Não foi possível remover.';}finally{this.saving=false;}}
+  async shareGuide(){if(!this.selectedGuide||!this.email.trim()||this.saving)return;this.saving=true;try{this.recipients=await firstValueFrom(this.guideService.shareGuide(this.selectedGuide.id,this.email.trim()));this.email='';this.notice='Acesso de leitura concedido.';}catch(e:any){this.dialogError=e.error?.detail||'Não foi possível compartilhar.';}finally{this.saving=false;}}
+  async revokeShare(id:number){if(!this.selectedGuide||this.saving)return;this.saving=true;try{this.recipients=await firstValueFrom(this.guideService.revokeShare(this.selectedGuide.id,id));}catch{this.dialogError='Não foi possível revogar o acesso.';}finally{this.saving=false;}}
+  async favorite(g:Guide){if(this.busyId!==null)return;this.busyId=g.id;try{const result=await firstValueFrom(this.guideService.favorite(g.id,!g.is_favorite));g.is_favorite=result.is_favorite;}catch{this.errorMessage='Não foi possível alterar o favorito.';}finally{this.busyId=null;}}
+  async updateGuide(g:Guide,data:Partial<Guide>){if(this.busyId!==null)return;this.busyId=g.id;try{await firstValueFrom(this.guideService.updateGuide(g.id,data));Object.assign(g,data);g.workspace_name=this.workspaces.find(w=>w.id===g.workspace)?.name||null;this.notice='Guia atualizado.';}catch(e:any){this.errorMessage=e.error?.workspace?.[0]||e.error?.detail||'Não foi possível atualizar o guia.';}finally{this.busyId=null;}}
+  async trash(g:Guide){if(this.busyId!==null||!confirm('Mover este guia para a lixeira? Você poderá restaurá-lo depois.'))return;this.busyId=g.id;try{await firstValueFrom(this.guideService.deleteGuide(g.id));g.trashed_at=new Date().toISOString();this.notice='Guia movido para a lixeira.';}catch{this.errorMessage='Não foi possível mover para a lixeira.';}finally{this.busyId=null;}}
+  async restore(g:Guide){if(this.busyId!==null)return;this.busyId=g.id;try{await firstValueFrom(this.guideService.restoreGuide(g.id));g.trashed_at=null;this.notice='Guia restaurado.';}catch{this.errorMessage='Não foi possível restaurar.';}finally{this.busyId=null;}}
+  async permanentlyDelete(g:Guide){if(this.busyId!==null||!confirm('Excluir definitivamente este guia e seus passos? Esta ação não pode ser desfeita.'))return;this.busyId=g.id;try{await firstValueFrom(this.guideService.permanentlyDelete(g.id));this.guides=this.guides.filter(item=>item.id!==g.id);this.notice='Guia excluído definitivamente.';}catch{this.errorMessage='Não foi possível excluir.';}finally{this.busyId=null;}}
+  async createGuide(){if(!this.newTitle.trim()||this.saving)return;this.saving=true;try{const g=await firstValueFrom(this.guideService.createGuide(this.newTitle.trim(),this.workspaceId));this.router.navigate(['/guides',g.id]);}catch{this.dialogError='Não foi possível criar o rascunho.';}finally{this.saving=false;}}
+  logout(){this.authService.logout();this.router.navigate(['/login']);}
 }

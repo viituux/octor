@@ -1,0 +1,6 @@
+import {Component,Input} from '@angular/core';
+@Component({selector:'octor-icon',standalone:true,template:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path [attr.d]="paths[name] || paths['draft']"/></svg>`,styles:[`:host{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:none}svg{width:100%;height:100%}`]})
+export class OctorIconComponent{
+ @Input() name='draft';
+ paths:Record<string,string>={draft:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h8 M8 17h5',check:'M20 11v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9 M9 11l4 4L22 4',shared:'M15 8a3 3 0 1 0 0-.1 M4 13a3 3 0 1 0 0-.1 M15 20a3 3 0 1 0 0-.1 M7 11l5-3 M7 14l5 4',star:'m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z',users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.9 M16 3.1a4 4 0 0 1 0 7.8',trash:'M3 6h18 M9 6V4h6v2 M5 6l1 15h12l1-15 M10 10v7 M14 10v7',search:'M21 21l-5-5 M10.5 18a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15',settings:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z',spark:'m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z'};
+}

@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 
 
 class Workspace(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_workspaces")
     name = models.CharField(max_length=255)
     members = models.ManyToManyField(User, related_name="workspaces")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -21,6 +22,9 @@ class Guide(models.Model):
     title = models.CharField(max_length=255, default="Novo Guia")
     description = models.TextField(blank=True, default="")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
+    trashed_at = models.DateTimeField(null=True, blank=True)
+    starred_by = models.ManyToManyField(User, blank=True, related_name="starred_guides")
+    capture_audio = models.FileField(upload_to="capture_audio/%Y/%m/%d/", null=True, blank=True)
     language = models.CharField(max_length=10, default="pt-BR")
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="guides")
     workspace = models.ForeignKey(
@@ -40,7 +44,9 @@ class Step(models.Model):
     guide = models.ForeignKey(Guide, on_delete=models.CASCADE, related_name="steps")
     order = models.PositiveIntegerField(default=1)
     text = models.TextField(blank=True, default="")
+    generation_prompt = models.TextField(blank=True, default="", max_length=3000)
     screenshot = models.ImageField(upload_to="screenshots/%Y/%m/%d/", null=True, blank=True)
+    narration = models.FileField(upload_to="narrations/%Y/%m/%d/", null=True, blank=True)
     selector = models.TextField(blank=True, default="")
     url = models.CharField(max_length=2000, blank=True, default="")
     click_x = models.FloatField(null=True, blank=True)
@@ -56,3 +62,24 @@ class Step(models.Model):
 
     def __str__(self):
         return f"Passo {self.order} do Guia '{self.guide.title}'"
+
+
+class GuideShare(models.Model):
+    guide = models.ForeignKey(Guide, on_delete=models.CASCADE, related_name='shares')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_guides')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['guide','user'], name='unique_guide_recipient')]
+
+
+class WorkspaceInvitation(models.Model):
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='invitations')
+    email = models.EmailField()
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='workspace_invitations_sent')
+    expires_at = models.DateTimeField()
+    accepted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='accepted_invitations')
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

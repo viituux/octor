@@ -1,4 +1,7 @@
-from rest_framework import generics, permissions
+from .sessions import session_tokens
+from rest_framework import generics, permissions, status
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth.models import User
@@ -9,9 +12,21 @@ from .serializers import RegisterSerializer, UserSerializer, CustomTokenObtainPa
 
 class CustomLoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
 
 
 class RegisterView(generics.CreateAPIView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        tokens = session_tokens(user)
+        return Response({**tokens, "user": UserSerializer(user).data}, status=status.HTTP_201_CREATED)
+
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
