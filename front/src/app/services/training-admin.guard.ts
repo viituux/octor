@@ -1,4 +1,4 @@
-/** Administração de treinamento: rascunho, revisão de perguntas, publicação e participantes. A publicação versiona conteúdo no servidor. */
+/** Administração de treinamento: rascunho, publicação e participantes. A publicação versiona conteúdo no servidor. */
 /**
  * Dependência ({inject}): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
  */

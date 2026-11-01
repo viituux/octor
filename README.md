@@ -20,7 +20,7 @@ PROJETO OCTOR/
 ├── back/                # Django REST Framework + Celery
 │   ├── accounts/           # Autenticação JWT e usuários
 │   ├── guides/             # Guias, Passos (screenshots e hotspots de clique)
-│   ├── trainings/          # Treinamentos, quiz, avaliação e feedback
+│   ├── trainings/          # Treinamentos, avaliação e feedback
 │   ├── videos/             # VideoJobs e pipeline assíncrono
 │   ├── ai/                 # Tarefas de geração textual automática
 │   ├── config/             # Configurações Django, URLs e Celery
@@ -208,9 +208,9 @@ Ao finalizar uma captura com microfone, a extensão abre o editor com o sinal de
 A transcrição usa o Gemini configurado no servidor e aceita áudio inline de até 14 MB. Arquivos maiores permanecem salvos, mas a geração pela voz informa o limite e preserva os textos. As transcrições são reutilizadas enquanto arquivo e intervalos não mudarem. Falhas não removem áudio ou instruções. A API /api/guides/{id}/prepare-narration/ requer autenticação e propriedade do guia. Referência: https://ai.google.dev/gemini-api/docs/generate-content/audio
 
 
-## Treinamentos, quiz e avaliações
+## Treinamentos e avaliações
 
-O módulo inclui participação, quiz de cinco perguntas, avaliação com estrelas e comentário, administração e dashboard. Acesse **Meus treinamentos** na biblioteca. Guia de instalação, contas de demonstração, endpoints e roteiro de testes: [docs/trainings-feedback-quiz.md](docs/trainings-feedback-quiz.md).
+O módulo inclui conteúdo, participação, conclusão, avaliação com estrelas e comentário, administração e dashboard. Ao concluir o procedimento, o participante segue diretamente para a avaliação. O quiz foi removido do fluxo ativo. Acesse **Meus treinamentos** na biblioteca. Guia de instalação, contas de demonstração, endpoints e roteiro de testes: [docs/trainings-feedback-quiz.md](docs/trainings-feedback-quiz.md).
 
 ## Reorganização de pastas — etapa 1
 

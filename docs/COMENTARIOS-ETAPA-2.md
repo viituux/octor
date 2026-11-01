@@ -1,5 +1,7 @@
 # Comentários em português — etapa 2
 
+> Relatório histórico da reorganização. Para o fluxo atual de treinamentos sem quiz, consulte [treinamentos e avaliações](trainings-feedback-quiz.md).
+
 ## Escopo entregue
 
 Foram documentados 132 arquivos próprios do projeto, sem alterar a lógica ou os contratos da aplicação:

@@ -1,4 +1,4 @@
-# Treinamentos, participações e quiz versionado. Restrições de unicidade impedem respostas e avaliações duplicadas no banco.
+# Treinamentos e avaliações. Estruturas antigas de quiz são mantidas somente para preservar dados históricos.
 # Dependência: modelos, consultas e transações do banco relacional.
 from django.db import models
 # Dependência: acesso às configurações carregadas no servidor.
@@ -14,6 +14,7 @@ class Training(models.Model):
     title=models.CharField(max_length=255)
     description=models.TextField(blank=True)
     status=models.CharField(max_length=12,default='draft',choices=[('draft','Rascunho'),('published','Publicado'),('archived','Arquivado')])
+    # Campos legados: não são usados nem expostos pelo fluxo atual.
     max_attempts=models.PositiveSmallIntegerField(default=1)
     draft_questions=models.JSONField(default=list,blank=True)
     current_version=models.ForeignKey('QuizVersion',on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
@@ -25,6 +26,7 @@ class Training(models.Model):
         constraints=[models.CheckConstraint(condition=Q(max_attempts__gte=1,max_attempts__lte=5),name='training_attempt_limit')]
 
 
+# Nome histórico mantido no banco; novas versões contêm somente o snapshot do procedimento.
 class QuizVersion(models.Model):
     training=models.ForeignKey(Training,on_delete=models.CASCADE,related_name='versions')
     number=models.PositiveIntegerField()
@@ -47,6 +49,7 @@ class Participation(models.Model):
         constraints=[models.UniqueConstraint(fields=['training','user'],name='unique_training_participant')]
 
 
+# Modelos abaixo preservam o histórico antigo; nenhuma API ativa cria ou consulta o quiz.
 class QuizQuestion(models.Model):
     version=models.ForeignKey(QuizVersion,on_delete=models.CASCADE,related_name='questions')
     statement=models.TextField(max_length=1500)

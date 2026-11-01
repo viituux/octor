@@ -1,69 +1,33 @@
-# Contratos do quiz e treinamento: cinco perguntas, alternativas, limites de tentativas e entradas de respostas/avaliações.
-# Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
+"""Valida cadastro de treinamento, atribuição e avaliação, sem entradas de quiz."""
 from rest_framework import serializers
-# Dependência: contratos e funções do módulo guides.models reutilizados neste fluxo.
-from guides.models import Guide
-# Dependência: modelos, consultas e transações do banco relacional.
-from django.db.models import Q
-# Dependência: contratos e funções do módulo .models reutilizados neste fluxo.
 from .models import Training
 
-class AlternativeInput(serializers.Serializer):
-    text=serializers.CharField(max_length=500)
-    correct=serializers.BooleanField()
-
-class QuestionInput(serializers.Serializer):
-    statement=serializers.CharField(max_length=1500)
-    explanation=serializers.CharField(max_length=1500,allow_blank=True,required=False,default='')
-    alternatives=AlternativeInput(many=True,min_length=4,max_length=4)
-    # Valida o campo `alternatives` antes de aceitá-lo no contrato de entrada de QuestionInput.
-    # Parâmetros — value: valor do campo em validação.
-    # Retorno: value.
-    # Falhas explícitas no fluxo: serializers.ValidationError. Consulte os blocos try/except para as conversões locais.
-    def validate_alternatives(self,value):
-        if sum(a['correct'] for a in value)!=1:raise serializers.ValidationError('Marque exatamente uma alternativa correta.')
-        if len({a['text'].strip().casefold() for a in value})!=4:raise serializers.ValidationError('As quatro alternativas devem ser diferentes.')
-        return value
 
 class TrainingInput(serializers.ModelSerializer):
-    draft_questions=serializers.JSONField(required=False)
     class Meta:
-        model=Training
-        fields=['guide','title','description','max_attempts','draft_questions']
-    # Valida o campo `guide` antes de aceitá-lo no contrato de entrada de TrainingInput.
-    # Parâmetros — guide: instância do procedimento.
-    # Retorno: guide.
-    # Falhas explícitas no fluxo: serializers.ValidationError. Consulte os blocos try/except para as conversões locais.
-    def validate_guide(self,guide):
-        user=self.context['request'].user
-        if guide.trashed_at or (guide.owner_id!=user.id and (not guide.workspace_id or guide.workspace.owner_id!=user.id or guide.status!='published')):
+        model = Training
+        fields = ['guide', 'title', 'description']
+
+    def to_internal_value(self, data):
+        """Rejeita campos removidos; retorna os dados do contrato atual ou ValidationError."""
+        if any(key in data for key in ('draft_questions', 'max_attempts')):
+            raise serializers.ValidationError({'non_field_errors': ['O quiz foi removido dos treinamentos. Envie somente os dados do procedimento.']})
+        return super().to_internal_value(data)
+
+    def validate_guide(self, guide):
+        """Aceita guia próprio ou publicado de equipe administrada; caso contrário, rejeita."""
+        user = self.context['request'].user
+        if guide.trashed_at or (guide.owner_id != user.id and (
+            not guide.workspace_id or guide.workspace.owner_id != user.id or guide.status != 'published'
+        )):
             raise serializers.ValidationError('Escolha um guia seu ou de um espaço que você administra.')
         return guide
-    # Valida o campo `max_attempts` antes de aceitá-lo no contrato de entrada de TrainingInput.
-    # Parâmetros — value: valor do campo em validação.
-    # Retorno: value.
-    # Falhas explícitas no fluxo: serializers.ValidationError. Consulte os blocos try/except para as conversões locais.
-    def validate_max_attempts(self,value):
-        if not 1<=value<=5:raise serializers.ValidationError('Escolha de 1 a 5 tentativas.')
-        return value
-    # Valida o campo `draft_questions` antes de aceitá-lo no contrato de entrada de TrainingInput.
-    # Parâmetros — value: valor do campo em validação.
-    # Retorno: lista; questions.validated_data.
-    # Falhas: is_valid(raise_exception=True) interrompe a operação se o serializer rejeitar os dados.
-    def validate_draft_questions(self,value):
-        if value==[]:return []
-        questions=QuestionInput(data=value,many=True,min_length=5,max_length=5)
-        questions.is_valid(raise_exception=True)
-        return questions.validated_data
+
 
 class FeedbackInput(serializers.Serializer):
-    stars=serializers.IntegerField(min_value=1,max_value=5)
-    comment=serializers.CharField(max_length=500,allow_blank=True,required=False,default='')
+    stars = serializers.IntegerField(min_value=1, max_value=5)
+    comment = serializers.CharField(max_length=500, allow_blank=True, required=False, default='')
 
-class AnswerInput(serializers.Serializer):
-    result_id=serializers.IntegerField(min_value=1)
-    question_id=serializers.IntegerField(min_value=1)
-    alternative_id=serializers.IntegerField(min_value=1)
 
 class AssignmentInput(serializers.Serializer):
-    emails=serializers.ListField(child=serializers.EmailField(),min_length=1,max_length=200)
+    emails = serializers.ListField(child=serializers.EmailField(), min_length=1, max_length=200)

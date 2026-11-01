@@ -1,5 +1,7 @@
 # Reorganização — etapa 1
 
+> Relatório histórico da reorganização. Para o fluxo atual de treinamentos sem quiz, consulte [treinamentos e avaliações](trainings-feedback-quiz.md).
+
 A raiz local foi renomeada de `autoguide` para `PROJETO OCTOR`. O diretório `.git` foi preservado e o remoto continua https://github.com/viituux/octor.git. Nenhum commit ou push faz parte desta etapa.
 
 ## Estrutura

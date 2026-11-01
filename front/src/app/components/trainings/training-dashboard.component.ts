@@ -29,7 +29,7 @@ import {TrainingService,trainingError} from '../../services/training.service';
 import {TrainingNavComponent} from './training-nav.component';
 @Component({standalone:true,imports:[CommonModule,FormsModule,RouterModule,TrainingNavComponent],templateUrl:'./training-dashboard.component.html',styleUrls:['./trainings.css']})
 export class TrainingDashboardComponent implements OnInit{
- data:any=null;trainings:any[]=[];/* boolean: diferencia carga inicial, estado vazio e conteúdo já recebido. */ loading=true;error='';training='';start='';end='';rating='';minPercent='';
+ data:any=null;trainings:any[]=[];/* boolean: diferencia carga inicial, estado vazio e conteúdo já recebido. */ loading=true;error='';training='';start='';end='';rating='';
  /**
   * Recebe as dependências e prepara o estado inicial da instância conforme o ciclo de injeção Angular.
   * @param service — TrainingService; serviço injetado para comunicação e estado da tela.
@@ -45,7 +45,7 @@ export class TrainingDashboardComponent implements OnInit{
   * Executa a etapa `load` do fluxo de training-dashboard.component.ts; os retornos abaixo identificam o contrato entregue ao chamador.
   * @returns void/undefined; efeitos nas operações do corpo.
   */
- async load(){this.loading=true;this.error='';try{this.data=await firstValueFrom(this.service.dashboard({training:this.training,start:this.start,end:this.end,rating:this.rating,min_percent:this.minPercent}));}catch(e){this.error=trainingError(e);this.data=null;}finally{this.loading=false;}}
+ async load(){this.loading=true;this.error='';try{this.data=await firstValueFrom(this.service.dashboard({training:this.training,start:this.start,end:this.end,rating:this.rating}));}catch(e){this.error=trainingError(e);this.data=null;}finally{this.loading=false;}}
  /**
   * Converte os valores mensais em coordenadas usadas pelo gráfico da interface.
   * @returns resultado de items.map((r:any,i:number)=>(30+(items.length===1?260:i*520/(items.length-1)))+','+(170-r.completions/max*140)(...).

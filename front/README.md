@@ -1,6 +1,6 @@
 # Front — interface web do OCTOR
 
-Aplicação Angular que apresenta o produto **OCTOR**: acesso à conta, biblioteca de procedimentos, editor, exportação e treinamentos. Consome a API do módulo [back](../back/README.md) e conversa com a [extensão](../extensao/README.md) para gravação e Me guie. A autorização definitiva e a pontuação do quiz pertencem ao servidor.
+Aplicação Angular que apresenta o produto **OCTOR**: acesso à conta, biblioteca de procedimentos, editor, exportação e treinamentos. Consome a API do módulo [back](../back/README.md) e conversa com a [extensão](../extensao/README.md) para gravação e Me guie. A autorização definitiva e a confirmação do progresso pertencem ao servidor.
 
 ## Tecnologias e versões
 
@@ -74,7 +74,7 @@ Edite `design-tokens.json`, não os arquivos de tema gerados.
 2. A biblioteca consulta guias e equipes. Favoritos são pessoais; compartilhamento, membros, lixeira e restauração são confirmados pela API.
 3. O editor recebe passos e metadados. Alterações de texto, título, enquadramento e voz são persistidas pelos serviços. A geração de instruções usa a configuração de IA do servidor.
 4. PDF usa o fluxo de impressão do navegador; exportação HTML monta um arquivo local. Não há endpoint de renderização PDF no frontend.
-5. O criador cadastra perguntas, revisa sugestões, publica e atribui treinamentos. O participante percorre conteúdo → quiz → resultado → avaliação. O servidor decide ordem, limite de tentativas, nota e duplicidade.
+5. O criador publica o procedimento e atribui treinamentos. O participante percorre conteúdo → avaliação. O servidor confirma a conclusão e impede avaliações duplicadas. Não há perguntas, pontuação ou ranking de participantes no fluxo atual.
 6. O Me guie solicita à extensão a abertura do tutorial. O guia continua no site real: não é uma cópia isolada ou simulador de HTML.
 
 ### Rotas de interface
@@ -116,7 +116,7 @@ npm run build
 
 Não há script `npm test` configurado. Os testes atuais de captura/voz transpilam os componentes e usam objetos simulados; não constituem teste integral de todas as telas em navegador. Na etapa anterior, a suíte conjunta teve 69 testes aprovados e o build de produção passou.
 
-Validação manual: entrar, criar/editar guia, salvar instrução, testar enquadramento, exportar PDF, conectar extensão e concluir treinamento com quiz/avaliação. Google e IA exigem configuração válida para testar a integração real.
+Validação manual: entrar, criar/editar guia, salvar instrução, testar enquadramento, exportar PDF, conectar extensão e concluir treinamento e enviar avaliação. Google e IA exigem configuração válida para testar a integração real.
 
 ## Deploy
 

@@ -1,4 +1,4 @@
-/** Cliente HTTP dos treinamentos: separa consultas do participante, gestão e indicadores; filtros são serializados para a API sem calcular pontuação no navegador. */
+/** Cliente HTTP dos treinamentos: separa consultas do participante, gestão e indicadores; filtros são serializados para a API sem alterar os indicadores retornados pelo servidor. */
 /**
  * Dependência ({Injectable}): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
  */
@@ -11,9 +11,7 @@ import {HttpClient,HttpParams} from '@angular/common/http';
  * Dependência ({Observable}): composição dos fluxos assíncronos e conversão/observação das respostas HTTP.
  */
 import {Observable} from 'rxjs';
-export interface QuizOption{text:string;correct:boolean}
-export interface QuizQuestion{statement:string;explanation:string;alternatives:QuizOption[]}
-export interface Training{id:number;guide:number;title:string;description:string;status:string;max_attempts:number;version:number|null;draft_questions?:QuizQuestion[];progress?:any;content?:any;summary?:any;participants?:any[]}
+export interface Training{id:number;guide:number;title:string;description:string;status:string;version:number|null;progress?:any;content?:any;summary?:any;participants?:any[]}
 /**
  * Normaliza os erros de treinamento para apresentação textual na interface.
  * @param e — any; evento ou falha recebida, conforme o tipo declarado e o uso no corpo.

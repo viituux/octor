@@ -1,6 +1,6 @@
 # Back — API e persistência do OCTOR
 
-Servidor Django/DRF do **OCTOR**. Centraliza usuários e sessões, permissões de guias/equipes, capturas e voz, geração de instruções e treinamentos com quiz/avaliação. É consumido pelo [frontend](../front/README.md) e pela [extensão](../extensao/README.md).
+Servidor Django/DRF do **OCTOR**. Centraliza usuários e sessões, permissões de guias/equipes, capturas e voz, geração de instruções e treinamentos com avaliação após concluir o conteúdo. É consumido pelo [frontend](../front/README.md) e pela [extensão](../extensao/README.md).
 
 ## Tecnologias e versões
 
@@ -31,7 +31,7 @@ back/
 ├── config/                   # settings, URLs, WSGI e Celery
 ├── accounts/                 # JWT, Google, perfil e revogação
 ├── guides/                   # guias, passos, equipes, convites e permissões
-├── trainings/                # versões de quiz, participação, feedback e analytics
+├── trainings/                # snapshots de conteúdo, participação, feedback e analytics
 │   └── management/commands/  # seed de demonstração
 ├── ai/                       # prompts, provedores e transcrição
 ├── videos/                   # registro de job e pipeline atualmente simulado
@@ -103,8 +103,8 @@ Os endpoints atuais de geração textual e preparação de narração executam s
 - Guias: criador registra procedimentos e passos; acesso considera autoria, equipe, publicação, compartilhamento e lixeira. Favorito é preferência individual.
 - Mídia: capturas em base64 são validadas e persistidas como arquivos; narração individual e áudio compartilhado usam campos de arquivo e anotações/intervalos. Metadados ficam no banco; arquivos ficam em `media`.
 - IA: chave do ambiente, contexto do passo, captura e/ou voz são usados pelo provedor. Geração falha sem substituir instruções por um resultado parcial inválido. A transcrição atual de voz usa o fluxo Gemini; não presume suporte equivalente nos outros provedores textuais.
-- Treinamentos: publicação cria versão congelada do conteúdo e quiz. Participação registra início/conclusão, tentativa, respostas e avaliação. Há cinco perguntas e quatro alternativas por pergunta; nota é acertos × 100 e percentual é acertos × 20. Não há bônus de rapidez implementado.
-- Duplicidade: validações, transações, bloqueios e restrições do banco protegem respostas/avaliações. Reenvio idêntico pode retornar o resultado existente; conflito de conteúdo não soma pontuação novamente.
+- Treinamentos: publicação cria uma versão congelada do procedimento, sem perguntas. Participação registra início e conclusão; a avaliação fica disponível após concluir o conteúdo. Resultados antigos de quiz permanecem no banco apenas como histórico, sem uso nos endpoints e indicadores atuais.
+- Duplicidade: validações, transações, bloqueios e restrições do banco protegem a avaliação. Reenvio idêntico retorna o registro existente; mudar os dados de uma avaliação já enviada retorna conflito.
 
 ### Endpoints principais
 
@@ -133,14 +133,13 @@ Todos os caminhos abaixo são relativos a `/api/`; manter a barra final evita re
 | `POST guides/<id>/video/`, `GET video-jobs/<id>/` | Criar/acompanhar job de vídeo simulado |
 | `GET trainings/capabilities/` | Capacidade de gestão |
 | `GET trainings/`, `GET trainings/<id>/` | Treinamentos e progresso do participante |
-| `POST trainings/<id>/<action>/` | `start`, `complete`, `quiz-start`, `answer`, `feedback` |
+| `POST trainings/<id>/<action>/` | `start`, `complete`, `feedback` |
 | `GET/POST trainings/admin/`, `GET/PATCH trainings/admin/<id>/` | Lista/criação/detalhe/edição administrativa |
 | `POST trainings/admin/<id>/<action>/` | `publish`, `archive`, `assign` |
-| `POST trainings/admin/<id>/suggestions/` | Sugestões que exigem revisão |
 | `GET trainings/admin/<id>/participants/<user_id>/` | Respostas e comentário do participante |
 | `GET trainings/admin/dashboard/` | Indicadores, rankings e comentários |
 
-Filtros de analytics: `start`, `end` (datas), `rating` (1–5) e `min_percent` (0–100); dashboard aceita também `training` no escopo administrável. Consulte serializers/views para os payloads exatos.
+Filtros de analytics: `start`, `end` (datas), `rating` (1–5); dashboard aceita também `training` no escopo administrável. Consulte serializers/views para os payloads exatos.
 
 Web e extensão usam `Authorization: Bearer <access>`. A extensão renova a sessão após 401 no fluxo de envio conforme seu próprio código. Google sem credenciais reais configuradas não foi validado ponta a ponta. CORS permite comunicação do navegador, mas não substitui autenticação/permissões.
 
@@ -151,7 +150,7 @@ Web e extensão usam `Authorization: Bearer <access>`. A extensão renova a sess
 .\venv\Scripts\python.exe manage.py makemigrations --check --dry-run
 ```
 
-A suíte anterior desta reorganização passou com 89 testes e banco temporário. Integrações de IA/Google são simuladas nos cenários pertinentes; aprovação não comprova disponibilidade ou faturamento de um provedor real.
+A suíte anterior à remoção do quiz passou com 89 testes e banco temporário. A remoção possui regressões específicas de conteúdo, avaliação e preservação de histórico. Integrações de IA/Google são simuladas nos cenários pertinentes; aprovação não comprova disponibilidade ou faturamento de um provedor real.
 
 Seed opcional, **somente em desenvolvimento** (`DEBUG=True`):
 
