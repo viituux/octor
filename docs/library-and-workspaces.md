@@ -1,6 +1,6 @@
 # Biblioteca e espaços de trabalho
 
-A biblioteca do Octo oferece Rascunhos, Publicados, Compartilhados comigo, Favoritos, Biblioteca da equipe e Lixeira, com busca e visualizações em cartões ou lista. A captura da extensão continua criando guias pessoais; o proprietário pode movê-los para um espaço pela opção do cartão.
+A biblioteca do OCTOR oferece Rascunhos, Publicados, Compartilhados comigo, Favoritos, Biblioteca da equipe e Lixeira, com busca e visualizações em cartões ou lista. A captura da extensão continua criando guias pessoais; o proprietário pode movê-los para um espaço pela opção do cartão.
 
 ## Acesso
 

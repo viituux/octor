@@ -1,30 +1,43 @@
-# ⚡ Octor - Plataforma de Tutoriais e Procedimentos com Vídeo & IA
+# ⚡ OCTOR - Plataforma de Tutoriais e Procedimentos com Vídeo & IA
 
-Inspirado no **Tango / Scribe**, o **Octor** grava ações no navegador (cliques, inputs, navegação) e transforma em procedimentos passo a passo com capturas de tela anotadas, descrições geradas por IA e, opcionalmente, vídeos narrados com legendas e avatar.
+## Documentação técnica por módulo
+
+- [Front — interface Angular](front/README.md)
+- [Back — API Django, dados e tarefas](back/README.md)
+- [Extensão — captura e Me guie](extensao/README.md)
+- [Stack, comparações técnicas e arquitetura](docs/STACK.md)
+
+Esses documentos descrevem a configuração e as limitações atuais. Em particular, o pipeline de vídeo existente simula progresso; não representa uma renderização completa de vídeo/legendas/avatar. As demais descrições históricas abaixo devem ser lidas com essa distinção.
+
+Inspirado no **Tango / Scribe**, o **OCTOR** grava ações no navegador (cliques, inputs, navegação) e transforma em procedimentos passo a passo com capturas de tela anotadas, descrições geradas por IA e, opcionalmente, vídeos narrados com legendas e avatar.
 
 ---
 
 ## 🏗️ Arquitetura do Projeto
 
 ```text
-octo/
-├── backend/                # Django REST Framework + Celery
+PROJETO OCTOR/
+├── back/                # Django REST Framework + Celery
 │   ├── accounts/           # Autenticação JWT e usuários
 │   ├── guides/             # Guias, Passos (screenshots e hotspots de clique)
+│   ├── trainings/          # Treinamentos, quiz, avaliação e feedback
 │   ├── videos/             # VideoJobs e pipeline assíncrono
 │   ├── ai/                 # Tarefas de geração textual automática
 │   ├── config/             # Configurações Django, URLs e Celery
 │   ├── requirements.txt
 │   └── manage.py
-├── extension/              # Extensão Chrome Manifest V3
+├── extensao/              # Extensão Chrome Manifest V3
 │   ├── manifest.json       # Permissões MV3 (activeTab, tabs, storage)
 │   ├── background.js       # Captura de tela (captureVisibleTab) e API
 │   ├── content.js          # Captura de cliques, seletores CSS e inputs
 │   ├── popup.html          # Interface de gravação
 │   └── popup.js            # Controles Gravar, Pausar, Finalizar e Login
-├── frontend/               # Single Page Application em Angular 19+
+├── front/               # Single Page Application em Angular 19+
 │   ├── src/app/components/ # Login, Lista de Guias e Editor de Procedimentos
 │   └── src/app/services/   # AuthService e GuideService
+├── docs/                   # Documentação técnica
+├── scripts/                # Geração compartilhada do tema
+├── design-tokens.json      # Tokens compartilhados de interface
 └── docker-compose.yml      # PostgreSQL e Redis
 ```
 
@@ -34,26 +47,28 @@ octo/
 
 Repositório: https://github.com/viituux/octor
 
-Em uma instalação nova, execute `pip install -r requirements.txt` dentro do ambiente virtual do backend e copie `backend/.env.example` para `backend/.env`, configurando suas chaves apenas localmente.
+Em uma instalação nova, execute `python -m pip install -r requirements.txt` dentro do ambiente virtual do backend e copie `back/.env.example` para `back/.env`, configurando suas chaves apenas localmente.
 
-Dependências, bancos locais, capturas, credenciais e builds são ignorados pelo Git. A pasta física de instalações existentes pode continuar chamada `autoguide`; os comandos devem ser executados a partir da pasta onde o projeto foi clonado.
+Dependências, bancos locais, capturas, credenciais e builds são ignorados pelo Git. A raiz local é `PROJETO OCTOR`; execute os comandos a partir dessa pasta. Use aspas nos caminhos absolutos porque o nome contém espaço.
 
 
 
 ### 1. Backend (Django REST Framework)
 
 ```powershell
-cd backend
-.\venv\Scripts\Activate.ps1   # ou crie com: python -m venv venv && pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver 8000
+cd back
+# Ambiente já movido: utilize o interpretador diretamente.
+# Para uma instalação nova, crie antes com: python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe manage.py migrate
+.\venv\Scripts\python.exe manage.py runserver 8000
 ```
 
 Crie seu administrador local com `python manage.py createsuperuser`.
 
 Para rodar o Celery Worker (quando o Redis estiver ativo):
 ```powershell
-celery -A config worker --loglevel=info -P solo
+.\venv\Scripts\python.exe -m celery -A config worker --loglevel=info -P solo
 ```
 
 ---
@@ -63,9 +78,9 @@ celery -A config worker --loglevel=info -P solo
 1. Abra o Google Chrome e acesse `chrome://extensions/`.
 2. Ative o **Modo do desenvolvedor** (canto superior direito).
 3. Clique em **Carregar sem compactação** (Load unpacked).
-4. Selecione a pasta `octo/extension`.
+4. Selecione a pasta `PROJETO OCTOR/extension`.
 5. Fixe a extensão na barra do navegador.
-6. Clique no ícone do Octo:
+6. Clique no ícone do OCTOR:
    - Faça login com a conta que você criou.
    - Digite o título do guia e clique em **"🔴 Iniciar Gravação"**.
    - Navegue por qualquer página clicando nos elementos desejados.
@@ -76,7 +91,7 @@ celery -A config worker --loglevel=info -P solo
 ### 3. Frontend (Editor Angular)
 
 ```powershell
-cd frontend
+cd front
 npm ci
 npm start
 ```
@@ -85,7 +100,7 @@ Acesse `http://localhost:4200` no seu navegador.
 ## Modo Me guie (primeira versão)
 
 1. Inicie o backend e o frontend conforme as instruções acima.
-2. Em `chrome://extensions`, recarregue a extensão Octo (ou carregue a pasta `extension`).
+2. Em `chrome://extensions`, recarregue a extensão OCTOR (ou carregue a pasta `extensao`).
 3. Recarregue o editor em `http://localhost:4200` ou `http://127.0.0.1:4200` para instalar a comunicação com a extensão.
 4. Abra um guia com passos que tenham URL e seletor, e clique em **Me guie**.
 5. Uma nova aba abre o site do primeiro passo. Faça login no site, se necessário.
@@ -99,7 +114,7 @@ O painel usa Shadow DOM, acompanha rolagem/redimensionamento e procura novamente
 Testes de regressão (na raiz do projeto):
 
 ```powershell
-node --test extension/tests/recorder.test.cjs extension/tests/playback.test.cjs
+node --test extensao/tests/recorder.test.cjs extensao/tests/playback.test.cjs
 ```
 
 ### Correção de localização e destaque
@@ -109,7 +124,7 @@ A extensão agora grava o botão/link pai ao clicar em ícones, gera seletores �
 O destaque acompanha alterações de layout durante a reprodução, tenta rolar até elementos que aparecem depois e usa a camada superior do navegador quando disponível para evitar deslocamentos por transformações CSS da página. Recarregue a extensão e as páginas abertas. Guias antigos usam o texto já salvo como alternativa; para capturar toda a identificação nova, grave novamente os passos problemáticos.
 
 ```powershell
-node --test extension/tests/targets.test.cjs extension/tests/playback.test.cjs extension/tests/recorder.test.cjs
+node --test extensao/tests/targets.test.cjs extensao/tests/playback.test.cjs extensao/tests/recorder.test.cjs
 ```
 
 ### Confiabilidade das imagens gravadas
@@ -125,7 +140,7 @@ No editor, selecione um passo e use **Narração deste passo > Gravar voz**. Aut
 
 O campo de narração é criado pela migração `guides.0003_step_narration` (`python manage.py migrate`). O áudio é salvo no backend em `media/narrations/`. Esta versão não inclui transcrição, narração durante a captura, reprodução no Me guie ou montagem de vídeo.
 
-Testes: `node --test frontend/tests/narration.test.cjs` e `python manage.py test guides.test_narration`.
+Testes: `node --test front/tests/narration.test.cjs` e `python manage.py test guides.test_narration`.
 
 
 ## Narrar enquanto captura
@@ -144,7 +159,7 @@ Se o envio falhar, tente finalizar novamente mantendo a aba auxiliar aberta. Os 
 
 ## Painel lateral fixo
 
-O ícone do Octo agora abre o painel lateral nativo do navegador, com login, título, captura, pausa, finalização e opção de microfone. O painel continua aberto ao clicar no site e navegar entre páginas. Ele pode ser fechado pelo botão do próprio navegador. Após atualizar os arquivos, recarregue a extensão em chrome://extensions e clique no ícone novamente. Requer Chrome 116 ou superior. A posição esquerda/direita é controlada pelas preferências do navegador. Não foi adicionada uma lista de tutoriais por site.
+O ícone do OCTOR agora abre o painel lateral nativo do navegador, com login, título, captura, pausa, finalização e opção de microfone. O painel continua aberto ao clicar no site e navegar entre páginas. Ele pode ser fechado pelo botão do próprio navegador. Após atualizar os arquivos, recarregue a extensão em chrome://extensions e clique no ícone novamente. Requer Chrome 116 ou superior. A posição esquerda/direita é controlada pelas preferências do navegador. Não foi adicionada uma lista de tutoriais por site.
 
 
 ## Editor em documento e apresentação do Me guie
@@ -165,8 +180,8 @@ No Me guie, o elemento recebe um contorno e o restante da página fica escurecid
 
 1. No Google Cloud Console, configure o consentimento OAuth e crie um Client ID do tipo **Aplicativo da Web**.
 2. Cadastre as origens JavaScript http://localhost:4200 e http://127.0.0.1:4200. Quando hospedar o app, acrescente a origem HTTPS correspondente.
-3. Instale as dependências do backend: `venv\Scripts\python.exe -m pip install -r requirements.txt`.
-4. Acrescente ao arquivo `backend/.env` a linha `GOOGLE_CLIENT_ID=seu-client-id.apps.googleusercontent.com`. Há um exemplo em `backend/.env.google.example`. Não é necessário Client Secret neste fluxo.
+3. Instale as dependências do backend: `venv\Scripts\python.exe -m python -m pip install -r requirements.txt`.
+4. Acrescente ao arquivo `back/.env` a linha `GOOGLE_CLIENT_ID=seu-client-id.apps.googleusercontent.com`. Há um exemplo em `back/.env.google.example`. Não é necessário Client Secret neste fluxo.
 5. Reinicie o Django e recarregue a página. O botão oficial Google aparecerá quando a configuração estiver ativa.
 
 O login valida o ID token no backend com google-auth e vincula pela identificação Google (sub), com uma tentativa de uso único e nonce. Contas locais com e-mail igual não são unidas automaticamente: entre com a senha e vincule o Google em Minha conta. O login Google ainda precisa ser validado com credenciais reais após a configuração. Esta entrega não inclui recuperação de senha por e-mail.
@@ -196,3 +211,7 @@ A transcrição usa o Gemini configurado no servidor e aceita áudio inline de a
 ## Treinamentos, quiz e avaliações
 
 O módulo inclui participação, quiz de cinco perguntas, avaliação com estrelas e comentário, administração e dashboard. Acesse **Meus treinamentos** na biblioteca. Guia de instalação, contas de demonstração, endpoints e roteiro de testes: [docs/trainings-feedback-quiz.md](docs/trainings-feedback-quiz.md).
+
+## Reorganização de pastas — etapa 1
+
+Consulte [o relatório da reorganização](docs/REORGANIZACAO-ETAPA-1.md). A extensão deve ser carregada novamente da pasta `extensao` após a movimentação. O ambiente virtual movido deve ser usado via `back/venv/Scripts/python.exe`; executáveis e scripts de ativação antigos podem manter caminhos anteriores.

@@ -1,10 +1,10 @@
-# Padrão visual do Octo
+# Padrão visual do OCTOR
 
 O produto usa superfícies claras, roxo como ação principal, texto escuro e mensagens semânticas: verde para sucesso, vermelho para erro e âmbar para pausa/atenção. O contorno laranja identifica o elemento nas capturas.
 
 ## Fonte compartilhada
 
-Edite `design-tokens.json` e execute `node scripts/build-theme.cjs` na raiz. O script gera `frontend/src/theme.css`, `extension/theme.css` e `extension/theme.js`. Não edite esses arquivos gerados diretamente. A página web importa o tema por `frontend/src/styles.css`; a extensão importa o CSS e o Me guie recebe as variáveis no Shadow DOM.
+Edite `design-tokens.json` e execute `node scripts/build-theme.cjs` na raiz. O script gera `front/src/theme.css`, `extensao/theme.css` e `extensao/theme.js`. Não edite esses arquivos gerados diretamente. A página web importa o tema por `front/src/styles.css`; a extensão importa o CSS e o Me guie recebe as variáveis no Shadow DOM.
 
 ## Controles
 

@@ -1,0 +1,23 @@
+# Framework do backend: ORM, migrações, autenticação, administração e ciclo HTTP.
+Django>=5.1,<6.0
+# API REST: serializers, views, respostas, permissões e validação de entradas.
+djangorestframework>=3.15.0
+# Tokens JWT de acesso e renovação usados pela web e pela extensão.
+djangorestframework-simplejwt>=5.3.1
+# Integração das regras de origem entre frontend, extensão e API.
+django-cors-headers>=4.4.0
+# Registro e execução das tarefas em worker separado quando o serviço está ativo.
+celery>=5.4.0
+# Cliente Python do Redis usado pela configuração de filas do Celery.
+redis>=5.0.0
+# Driver PostgreSQL; SQLite continua disponível pela configuração Django existente.
+psycopg[binary]>=3.2.0
+# Processamento/validação de imagens capturadas e campos de imagem.
+pillow>=10.4.0
+# Carrega variáveis do .env local sem embutir credenciais nos fontes.
+python-dotenv>=1.0.1
+
+# Valida credenciais Google e suas declarações de identidade no servidor.
+google-auth>=2.38,<3
+# Chamadas HTTP aos provedores de IA e integração com o transporte de autenticação Google.
+requests>=2.32,<3

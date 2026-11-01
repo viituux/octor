@@ -1,13 +1,13 @@
-# Local credentials and environment
+# Credenciais e variáveis locais: os exemplos sem segredos continuam versionáveis.
 .env
 .env.*
 !.env.*.example
 !.env.example
-# Local data
+# Banco e mídias locais não pertencem ao histórico Git.
 *.sqlite3
 *.sqlite3-*
-backend/media/
-# Dependencies and generated files
+back/media/
+# Dependências, caches e artefatos gerados são recriados pelas ferramentas.
 node_modules/
 venv/
 .venv/

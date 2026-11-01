@@ -1,4 +1,6 @@
+# Serviços auxiliares locais: somente PostgreSQL e Redis; front/back/extensão não são executados por este Compose.
 services:
+  # Banco opcional: nomes e volume existentes são mantidos para não criar outra base na reorganização.
   postgres:
     image: postgres:16-alpine
     container_name: autoguide_postgres
@@ -12,6 +14,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # Broker de tarefas: o worker Celery é iniciado separadamente pelo interpretador do backend.
   redis:
     image: redis:7-alpine
     container_name: autoguide_redis
@@ -21,6 +24,7 @@ services:
     volumes:
       - redis_data:/data
 
+# Volumes nomeados preservam os dados auxiliares entre reinicializações dos containers.
 volumes:
   postgres_data:
   redis_data:

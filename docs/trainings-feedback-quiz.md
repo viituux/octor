@@ -1,4 +1,4 @@
-# Treinamentos, quiz e avaliações — Octo
+# Treinamentos, quiz e avaliações — OCTOR
 
 ## O que foi implementado
 
@@ -23,7 +23,7 @@ O dashboard apresenta indicadores, barras de média por treinamento, evolução 
 
 ## Modelos e migração
 
-Novo app `backend/trainings`: Training, Participation, QuizVersion, QuizQuestion, QuizAlternative, QuizResult, QuizAnswer e Feedback. Migração: `trainings.0001_initial`.
+Novo app `back/trainings`: Training, Participation, QuizVersion, QuizQuestion, QuizAlternative, QuizResult, QuizAnswer e Feedback. Migração: `trainings.0001_initial`.
 
 Há unicidade no banco para participação, versão, número de tentativa, resposta por pergunta e avaliação por usuário/treinamento. Transações e bloqueio da participação coordenam respostas e limites de tentativa. Conflitos de gravação retornam 409 para repetição segura.
 
@@ -78,7 +78,7 @@ Recarregar a extensão após atualizar os arquivos. A conclusão também pode se
 Na pasta do projeto, com as dependências já instaladas:
 
 ```powershell
-cd C:\Users\victo\.gemini\antigravity\scratch\autoguide\backend
+cd "C:\Users\victo\.gemini\antigravity\scratch\PROJETO OCTOR\back"
 .\venv\Scripts\python.exe manage.py migrate
 .\venv\Scripts\python.exe manage.py seed_trainings
 .\venv\Scripts\python.exe manage.py runserver
@@ -87,7 +87,7 @@ cd C:\Users\victo\.gemini\antigravity\scratch\autoguide\backend
 Em outro terminal:
 
 ```powershell
-cd C:\Users\victo\.gemini\antigravity\scratch\autoguide\frontend
+cd "C:\Users\victo\.gemini\antigravity\scratch\PROJETO OCTOR\front"
 npm start
 ```
 
@@ -118,14 +118,14 @@ A geração de sugestões usa o provedor já configurado no backend. Em caso de 
 ## Testes automatizados
 
 ```powershell
-cd C:\Users\victo\.gemini\antigravity\scratch\autoguide\backend
+cd "C:\Users\victo\.gemini\antigravity\scratch\PROJETO OCTOR\back"
 .\venv\Scripts\python.exe manage.py test --noinput
 ```
 
 ```powershell
-cd C:\Users\victo\.gemini\antigravity\scratch\autoguide
-node --test extension/tests/*.test.cjs frontend/tests/*.test.cjs
-cd frontend
+cd "C:\Users\victo\.gemini\antigravity\scratch\PROJETO OCTOR"
+node --test extensao/tests/*.test.cjs front/tests/*.test.cjs
+cd front
 npx ng build --configuration development
 ```
 

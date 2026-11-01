@@ -1,6 +1,6 @@
 # Configurações da conta
 
-A rota `/account` oferece Perfil, Segurança e acesso, e Conexões, seguindo a identidade visual do Octo e com layout adaptado ao celular.
+A rota `/account` oferece Perfil, Segurança e acesso, e Conexões, seguindo a identidade visual do OCTOR e com layout adaptado ao celular.
 
 ## Perfil e identidade
 

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<!-- Painel lateral da extensão: os controles disparam comandos; o worker mantém gravação e sessão, e este documento apresenta seu estado. -->
+
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>OCTOR — Captura</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+  <div class="header">
+    <div class="logo">OCTOR</div>
+    <div id="statusBadge" class="status-badge">Pronto</div>
+  </div>
+
+  <!-- Tela de Login -->
+  <div id="authSection" class="hidden">
+    <div class="field">
+      <label for="username">Usuário</label>
+      <input type="text" id="username" placeholder="seu-usuario" />
+    </div>
+    <div class="field">
+      <label for="password">Senha</label>
+      <input type="password" id="password" placeholder="••••••••" />
+    </div>
+    <button id="btnLogin" class="btn btn-primary">Entrar</button>
+    <button id="btnBrowserLogin" class="btn btn-secondary" style="margin-top:10px">Entrar pelo navegador / Google</button>
+    <div id="authError" class="error-msg hidden"></div>
+  </div>
+
+  <!-- Tela do Gravador -->
+  <div id="recorderSection" class="hidden">
+    <div class="stats-card">
+      <div id="stepCounter" class="step-counter">0</div>
+      <div class="step-label">Passos capturados</div>
+    </div>
+
+    <div id="setupControls">
+      <div class="field">
+        <label for="guideTitle">Título do Guia</label>
+        <input type="text" id="guideTitle" placeholder="Ex: Criando nova fatura" value="Novo Guia" />
+      </div>
+      <label class="microphone-option"><input type="checkbox" id="withMicrophone"> Gravar com microfone</label>
+      <button id="btnStart" class="btn btn-record">🔴 Iniciar Gravação</button>
+    </div>
+
+    <div id="activeControls" class="hidden">
+      <div class="btn-row">
+        <button id="btnPause" class="btn btn-secondary">⏸️ Pausar</button>
+        <button id="btnFinish" class="btn btn-success">✅ Finalizar</button>
+      </div>
+    </div>
+
+    <button id="btnStopTutorial" class="btn btn-secondary hidden" style="margin-top:8px">Encerrar tutorial</button>
+    <p id="voiceStatus" ></p>
+    <button id="btnFinishSilent" class="btn btn-secondary hidden">Finalizar sem narração</button>
+    <div id="recorderMsg" class="error-msg hidden"></div>
+
+    <div class="footer">
+      <span id="userInfo">Conectado</span>
+      <button id="btnLogout" class="link">Sair</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

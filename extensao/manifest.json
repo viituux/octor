@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "OCTOR - Gravador de Procedimentos",
+  "version": "1.0.0",
+  "description": "Grava suas ações no navegador e gera tutoriais passo a passo com capturas de tela.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "Abrir OCTOR"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "theme.js",
+        "targets.js",
+        "content.js",
+        "playback.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "minimum_chrome_version": "116",
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:4200/*",
+      "http://127.0.0.1:4200/*"
+    ]
+  }
+}
