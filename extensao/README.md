@@ -41,7 +41,7 @@ Após a reorganização de pastas, a entrada antiga pode continuar apontando par
 
 ### Configuração e .env
 
-A extensão carrega `environment.js`. A configuração local aponta para o frontend na porta 4200 e a API na porta 8000. Para homologação, defina `frontendOrigin` e `appOrigins` com o domínio HTTPS do OCTOR, `apiBase` com a URL HTTPS que termina em `/api` e adicione o padrão do frontend a `externally_connectable.matches` no manifesto. Recarregue a extensão em `chrome://extensions` e reconecte a conta.
+A extensão carrega `environment.js` com o endereço público `https://octor.app.br`. Para desenvolvimento local, use uma cópia da pasta e defina `frontendOrigin` e `appOrigins` com a origem local, `apiBase` com `http://localhost:8000/api` e a mesma origem local em `externally_connectable.matches` no manifesto. Recarregue a extensão e conecte a conta do ambiente escolhido.
 
 Em `playbackTestOrigins`, inclua somente origens HTTPS dedicadas à homologação dos procedimentos. Essa lista autoriza o site onde o procedimento será guiado. O domínio do OCTOR pertence a `appOrigins`.
 

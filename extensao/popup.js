@@ -9,19 +9,23 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
   const setupControls = document.getElementById("setupControls");
   const activeControls = document.getElementById("activeControls");
   const btnLogin = document.getElementById("btnLogin");
-  const btnLogout = document.getElementById("btnLogout");
   const btnStart = document.getElementById("btnStart");
   const btnPause = document.getElementById("btnPause");
   const btnFinish = document.getElementById("btnFinish");
   const guideTitleInput = document.getElementById("guideTitle");
-  const userInfo = document.getElementById("userInfo");
   const authError = document.getElementById("authError");
   const recorderMsg = document.getElementById("recorderMsg");
+
+  // Os atalhos usam o mesmo ambiente da sessão para abrir a aplicação correta.
+  for (const link of document.querySelectorAll('[data-octor-page]')) {
+    link.href = new URL(link.dataset.octorPage, globalThis.OctorEnvironment.frontendOrigin).href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+  }
 
   // Checa autenticação e estado inicial
   const data = await chrome.storage.local.get([
     "authToken",
-    "currentUser",
     "isRecording",
     "isPaused",
     "recordedSteps",
@@ -34,9 +38,6 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
   } else {
     authSection.classList.add("hidden");
     recorderSection.classList.remove("hidden");
-    if (data.currentUser) {
-      userInfo.textContent = `@${data.currentUser}`;
-    }
     updateRecordingUI(data.isRecording, data.isPaused, data.recordedSteps?.length || 0, data.guideTitle);
   }
 
@@ -80,7 +81,6 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
 
       authSection.classList.add("hidden");
       recorderSection.classList.remove("hidden");
-      userInfo.textContent = `@${username}`;
       const state = await chrome.storage.local.get(["isRecording", "isPaused", "recordedSteps", "guideTitle"]);
       updateRecordingUI(state.isRecording, state.isPaused, state.recordedSteps?.length || 0, state.guideTitle);
     } catch (err) {
@@ -90,22 +90,6 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
       btnLogin.disabled = false;
       btnLogin.textContent = "Entrar";
     }
-  });
-
-  // Logout
-  btnLogout.addEventListener("click", /* Trata evento click no contexto deste módulo; o estado e as verificações do handler delimitam quando a ação é aceita. | @returns void/undefined. */ async () => {
-    const active=await chrome.storage.local.get(["isRecording","playback"]);
-    if(active.isRecording || active.playback){showRecorderError("Finalize a gravação ou tutorial antes de sair.");return;}
-    const {refreshToken} = await chrome.storage.local.get('refreshToken');
-    await chrome.storage.local.remove(["authToken", "refreshToken", "currentUser"]);
-    if (refreshToken) {
-      fetch(API_BASE + '/auth/logout/', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({refresh: refreshToken}), keepalive: true,
-      }).catch(() => {});
-    }
-    recorderSection.classList.add("hidden");
-    authSection.classList.remove("hidden");
   });
 
   /**
@@ -207,11 +191,11 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
       if (isPaused) {
         statusBadge.textContent = "Pausado";
         statusBadge.className = "status-badge paused";
-        btnPause.textContent = "▶️ Continuar";
+        btnPause.textContent = "Continuar";
       } else {
         statusBadge.textContent = "Gravando";
         statusBadge.className = "status-badge recording";
-        btnPause.textContent = "⏸️ Pausar";
+        btnPause.textContent = "Pausar";
       }
     } else {
       setupControls.classList.remove("hidden");
@@ -225,11 +209,10 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
   // Listener para atualizar contador em tempo real se o popup estiver aberto
   chrome.storage.onChanged.addListener(/* Recebe o evento do navegador/Chrome e delega ao fluxo registrado neste contexto. | @param changes — valor recebido do contexto chamador. | @param area — valor recebido do contexto chamador. | @returns void/undefined; efeitos nas operações do corpo. */ (changes, area) => {
     if (area === "local") {
-      if (changes.authToken || changes.currentUser) {
-        chrome.storage.local.get(['authToken','currentUser']).then(state=>{
+      if (changes.authToken) {
+        chrome.storage.local.get('authToken').then(state=>{
           authSection.classList.toggle('hidden',!!state.authToken);
           recorderSection.classList.toggle('hidden',!state.authToken);
-          userInfo.textContent=state.currentUser?'@'+state.currentUser:'';
           refreshRecorder();
         });
       }
@@ -247,7 +230,7 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
 document.addEventListener('DOMContentLoaded', async () => {
   const render = async () => {
     const {manualCapture:session}=await chrome.storage.local.get('manualCapture');
-    document.getElementById('manualStatusPanel').classList.toggle('hidden',!session);
+    document.getElementById('manualStatusPanel').classList.toggle('hidden', !session || session.status === 'captured');
     document.getElementById('manualCaptureMessage').textContent=session?.message||'';
     document.getElementById('btnManualContinue').classList.toggle('hidden',session?.status!=='attention');
     document.getElementById('btnManualStop').classList.toggle('hidden',!session?.active);

@@ -4,18 +4,28 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/jpeg" href="octor-icon.jpg">
   <title>OCTOR — Captura</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
 
   <div class="header">
-    <div class="logo">OCTOR</div>
+    <a class="logo" data-octor-page="/guides" aria-label="Abrir biblioteca do OCTOR">
+      <img src="octor-icon.jpg" alt="" width="34" height="34">
+      <span>OCTOR</span>
+    </a>
+    <nav class="header-links" aria-label="Conta">
+      <a data-octor-page="/notifications" aria-label="Notificações" title="Notificações"><span class="bell" aria-hidden="true"></span></a>
+      <a data-octor-page="/account" aria-label="Configurações da conta" title="Configurações da conta">⚙</a>
+    </nav>
     <div id="statusBadge" class="status-badge">Pronto</div>
   </div>
 
   <!-- Tela de Login -->
   <div id="authSection" class="hidden">
+    <h1>Entre no OCTOR</h1>
     <div class="field">
       <label for="username">Usuário</label>
       <input type="text" id="username" placeholder="seu-usuario" />
@@ -25,51 +35,58 @@
       <input type="password" id="password" placeholder="••••••••" />
     </div>
     <button id="btnLogin" class="btn btn-primary">Entrar</button>
-    <button id="btnBrowserLogin" class="btn btn-secondary" style="margin-top:10px">Entrar pelo navegador / Google</button>
-    <div id="authError" class="error-msg hidden"></div>
+    <button id="btnBrowserLogin" class="btn btn-secondary">Entrar pelo navegador / Google</button>
+    <div id="authError" class="error-msg hidden" role="status"></div>
   </div>
 
   <!-- Tela do Gravador -->
   <div id="recorderSection" class="hidden">
-    <div class="stats-card">
-      <div id="stepCounter" class="step-counter">0</div>
-      <div class="step-label">Passos capturados</div>
-    </div>
-
     <div id="setupControls">
-      <div class="field">
-        <label for="guideTitle">Título do Guia</label>
-        <input type="text" id="guideTitle" placeholder="Ex: Criando nova fatura" value="Novo Guia" />
-      </div>
-      <label class="microphone-option"><input type="checkbox" id="withMicrophone"> Gravar com microfone</label>
-      <button id="btnStart" class="btn btn-record">🔴 Iniciar Gravação</button>
+      <button id="btnStart" class="btn btn-record"><span class="capture-icon" aria-hidden="true"></span> Iniciar captura</button>
+      <details class="capture-options">
+        <summary>Opções de captura</summary>
+        <div class="field">
+          <label for="guideTitle">Título do guia</label>
+          <input type="text" id="guideTitle" placeholder="Ex.: Criar uma fatura" value="Novo Guia">
+        </div>
+        <label class="microphone-option"><input type="checkbox" id="withMicrophone"> Gravar com microfone</label>
+      </details>
     </div>
 
     <div id="activeControls" class="hidden">
+      <div class="stats-card" role="status">
+        <strong id="stepCounter" class="step-counter">0</strong>
+        <span>Passos capturados</span>
+      </div>
       <div class="btn-row">
-        <button id="btnPause" class="btn btn-secondary">⏸️ Pausar</button>
-        <button id="btnFinish" class="btn btn-success">✅ Finalizar</button>
+        <button id="btnPause" class="btn btn-secondary">Pausar</button>
+        <button id="btnFinish" class="btn btn-success">Finalizar</button>
       </div>
     </div>
 
-    <button id="btnStopTutorial" class="btn btn-secondary hidden" style="margin-top:8px">Encerrar tutorial</button>
+    <button id="btnStopTutorial" class="btn btn-secondary hidden">Encerrar tutorial</button>
     <section id="playbackNarration" class="hidden" aria-labelledby="playbackNarrationTitle">
       <h3 id="playbackNarrationTitle">Narração do passo</h3>
       <p id="playbackNarrationStatus" role="status"></p>
-      <audio id="playbackNarrationAudio" class="hidden" style="width:100%" controls preload="metadata" aria-label="Narração do passo atual"></audio>
+      <audio id="playbackNarrationAudio" class="hidden" controls preload="metadata" aria-label="Narração do passo atual"></audio>
       <button id="btnRetryPlaybackNarration" type="button" class="btn btn-secondary hidden">Tentar carregar novamente</button>
     </section>
     <p id="voiceStatus" ></p>
     <button id="btnFinishSilent" class="btn btn-secondary hidden">Finalizar sem narração</button>
-    <div id="recorderMsg" class="error-msg hidden"></div>
+    <div id="recorderMsg" class="error-msg hidden" role="status"></div>
 
-    <div class="footer">
-      <span id="userInfo">Conectado</span>
-      <button id="btnLogout" class="link">Sair</button>
-    </div>
+    <section class="library" aria-labelledby="libraryTitle">
+      <h2 id="libraryTitle">Seus documentos</h2>
+      <div class="library-card">
+        <span class="document-icon" aria-hidden="true">☷</span>
+        <p>Abra seus guias ou crie um manual a partir de uma URL.</p>
+        <a class="btn btn-secondary" data-octor-page="/guides">Abrir biblioteca</a>
+        <a class="library-link" data-octor-page="/manuals">Manual por URL</a>
+      </div>
+    </section>
   </div>
 
-  <section id="manualStatusPanel" class="stats-card hidden" style="margin-top:16px"><h2 style="font-size:16px">Manual automático</h2><p id="manualCaptureMessage" role="status"></p><button id="btnManualContinue" class="btn btn-primary hidden">Continuar coleta</button><button id="btnManualStop" class="btn btn-secondary hidden">Interromper coleta</button></section>
+  <section id="manualStatusPanel" class="stats-card hidden"><h2>Manual automático</h2><p id="manualCaptureMessage" role="status"></p><button id="btnManualContinue" class="btn btn-primary hidden">Continuar coleta</button><button id="btnManualStop" class="btn btn-secondary hidden">Interromper coleta</button></section>
   <script src="environment.js"></script>
   <script src="dialogs.js"></script>
   <script src="popup.js"></script>

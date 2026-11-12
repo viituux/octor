@@ -1,7 +1,7 @@
-// Configure a distribuição da extensão. Origens de destinos são exclusivas de homologação.
+// Esta distribuição usa a API pública do OCTOR. Destinos guiados são exclusivos de homologação.
 globalThis.OctorEnvironment = Object.freeze({
-  appOrigins: ['http://localhost:4200', 'http://127.0.0.1:4200'],
-  frontendOrigin: 'http://localhost:4200',
-  apiBase: 'http://localhost:8000/api',
+  appOrigins: ['https://octor.app.br'],
+  frontendOrigin: 'https://octor.app.br',
+  apiBase: 'https://octor.app.br/api',
   playbackTestOrigins: [],
 });
