@@ -1,0 +1,16 @@
+[Unit]
+Description=OCTOR Manual por URL queue worker
+After=network.target postgresql.service
+
+[Service]
+User=octor
+Group=octor
+WorkingDirectory=/srv/octor/back
+EnvironmentFile=/srv/octor/back/.env
+ExecStart=/srv/octor/back/venv/bin/python /srv/octor/back/manage.py process_manual_queue
+Restart=on-failure
+RestartSec=5
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
