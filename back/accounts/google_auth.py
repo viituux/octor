@@ -1,3 +1,4 @@
+from .training_consent import accept_training_consent, require_current_version
 # Login e vinculação Google. O desafio de uso único e o nonce vinculam a credencial à tentativa iniciada nesta aplicação.
 # Dependência: contratos e funções do módulo .sessions reutilizados neste fluxo.
 from .sessions import session_tokens
@@ -15,6 +16,7 @@ from django.core.cache import cache
 from django.db import transaction, IntegrityError
 # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
 from rest_framework import permissions
+from rest_framework.exceptions import ValidationError
 # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
 from rest_framework.response import Response
 # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
@@ -81,7 +83,7 @@ class GoogleChallengeView(APIView):
 # Parâmetros — request: requisição DRF com usuário, corpo e contexto HTTP.
 # Retorno: claims.
 # Falhas explícitas no fluxo: RuntimeError, ValueError. Consulte os blocos try/except para as conversões locais.
-def checked_claims(request):
+def checked_claims(request, *, consume=True):
     if not settings.GOOGLE_CLIENT_ID:
         raise RuntimeError("O acesso com Google ainda não foi configurado.")
     credential = request.data.get("credential")
@@ -98,10 +100,15 @@ def checked_claims(request):
         raise ValueError("É necessário um e-mail verificado pelo Google.")
     if claims.get("nonce") != expected_nonce:
         raise ValueError("A tentativa de login não corresponde à conta selecionada.")
+    if consume:
+        consume_google_challenge(challenge)
+    return claims
+
+
+def consume_google_challenge(challenge):
     if not cache.add("google_consumed:" + challenge, True, 300):
         raise ValueError("Esta tentativa já foi utilizada. Tente novamente.")
     cache.delete("google_challenge:" + challenge)
-    return claims
 
 
 class GoogleLoginView(APIView):
@@ -117,7 +124,7 @@ class GoogleLoginView(APIView):
     # Retorno: resultado de Response(...).
     def post(self, request):
         try:
-            claims = checked_claims(request)
+            claims = checked_claims(request, consume=False)
         except (ImportError, RuntimeError):
             return Response({"detail": "Google indisponível. Verifique GOOGLE_CLIENT_ID e as dependências do backend."}, status=503)
         except Exception:
@@ -125,14 +132,29 @@ class GoogleLoginView(APIView):
         try:
             with transaction.atomic():
                 account = GoogleAccount.objects.select_related("user").filter(subject=claims["sub"]).first()
-                if account:
-                    user = account.user
-                else:
+                consent_version = request.data.get('consent_version')
+                if not account:
                     if User.objects.filter(email__iexact=claims["email"]).exists():
                         return Response({"detail": "Este e-mail já tem uma conta. Entre com sua senha e vincule o Google em Minha conta."}, status=409)
+                    try:
+                        require_current_version(consent_version)
+                    except ValidationError as exc:
+                        # O primeiro acesso pode retomar o mesmo desafio após exibir o termo.
+                        return Response({**exc.detail, 'code': 'training_consent_required'}, status=400)
+
+                try:
+                    consume_google_challenge(request.data['challenge'])
+                except ValueError:
+                    return Response({"detail": "Não foi possível validar sua conta Google. Tente novamente."}, status=400)
+                if account:
+                    user = account.user
+                    if user.is_active and consent_version:
+                        accept_training_consent(user, consent_version, 'google')
+                else:
                     user = User.objects.create_user(username="google_" + uuid.uuid4().hex[:20], email=claims["email"].lower(),
                                                     first_name=str(claims.get("given_name", ""))[:150], last_name=str(claims.get("family_name", ""))[:150])
                     GoogleAccount.objects.create(user=user, subject=claims["sub"], email=claims["email"])
+                    accept_training_consent(user, consent_version, 'google')
                 if not user.is_active:
                     return Response({"detail": "Esta conta está desativada."}, status=403)
                 tokens = session_tokens(user)

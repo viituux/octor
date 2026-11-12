@@ -1,0 +1,17 @@
+<section class="panel ai-settings" aria-labelledby="workspace-ai-settings">
+  <h2 id="workspace-ai-settings">Inteligência artificial</h2>
+  <p class="muted">Configuração para <strong>{{scopeName}}</strong>. A chave própria é usada para instruções e quiz. A narração usa a integração do OCTOR.</p>
+  <p *ngIf="busy" role="status">Processando…</p>
+  <p *ngIf="error" class="alert error" role="alert">{{error}} <button *ngIf="!status" type="button" (click)="load()">Tentar novamente</button></p>
+  <p *ngIf="notice" class="alert" role="status">{{notice}}</p>
+  <form *ngIf="status as configured" (ngSubmit)="save()" autocomplete="off">
+    <fieldset>
+      <legend>Instruções e perguntas do quiz</legend>
+      <p>{{configured.gemini_configured ? 'Usando chave Gemini própria' : 'Usando a IA padrão do OCTOR'}}.</p>
+      <label>Chave Gemini <input type="password" name="geminiKey" [(ngModel)]="geminiKey" maxlength="512" autocomplete="new-password" [disabled]="busy"></label>
+      <p class="muted">Deixe em branco para manter a configuração atual. O Manual por URL continua com a integração própria dele.</p>
+      <button *ngIf="configured.gemini_configured" type="button" (click)="remove()" [disabled]="busy">Remover chave Gemini</button>
+    </fieldset>
+    <button class="primary" type="submit" [disabled]="busy || !geminiKey.trim()">Salvar configuração</button>
+  </form>
+</section>

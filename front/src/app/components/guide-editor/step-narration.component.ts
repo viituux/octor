@@ -2,6 +2,8 @@
 /**
  * Dependência ({ Component, Input, Output, EventEmitter, OnChanges, OnDestroy, ViewChild, ElementRef }): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
  */
+import { OctorLoadingComponent } from '../shared/octor-loading.component';
+import { OctorMediaDirective } from '../shared/octor-media.directive';
 import { Component, Input, Output, EventEmitter, OnChanges, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 /**
  * Dependência ({ FormsModule }): vínculo e validação dos formulários da interface.
@@ -15,17 +17,23 @@ import { CommonModule } from '@angular/common';
  * Dependência ({ GuideService, Step }): contratos e comportamento compartilhados de ../../services/guide.service.
  */
 import { GuideService, Step } from '../../services/guide.service';
+import { DialogService } from '../../services/dialog.service';
 
 @Component({
-  selector: 'app-step-narration', standalone: true, imports: [CommonModule, FormsModule],
+  selector: 'app-step-narration', standalone: true, imports: [CommonModule, FormsModule, OctorLoadingComponent, OctorMediaDirective],
   template: `
     <section style="padding:12px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:8px;color:var(--text-main)">
       <strong>Narração deste passo</strong>
       <p *ngIf="!readOnly" style="font-size:12px;color:var(--text-muted)">Grave até 2 minutos. Ao salvar, sua fala será usada para gerar a instrução deste passo. Ouça e revise.</p>
-      <audio *ngIf="previewUrl || step.narration_url" [src]="previewUrl || step.narration_url" controls style="width:100%;margin-bottom:10px"></audio>
-      <div *ngIf="step.live_narration_url && !step.narration_url && !draft" style="margin-bottom:12px">
+      <div *ngIf="previewUrl || step.narration_url" [octorMedia]="previewUrl || step.narration_url" #narration="octorMedia">
+        <audio *ngIf="narration.source() as source" [src]="source" controls style="width:100%;margin-bottom:10px"></audio>
+        <p *ngIf="narration.failed()" role="status">Não foi possível carregar a narração.</p>
+      </div>
+      <div *ngIf="step.live_narration_url && !step.narration_url && !draft" style="margin-bottom:12px"
+        [octorMedia]="step.live_narration_url" #recordingMedia="octorMedia">
         <p style="font-size:12px">Voz gravada durante o procedimento. Ajuste o trecho deste passo em segundos.</p>
-        <audio #liveAudio [src]="step.live_narration_url" controls (play)="beginLive(liveAudio)" (timeupdate)="limitLive(liveAudio)" style="width:100%"></audio>
+        <audio *ngIf="recordingMedia.source() as source" #liveAudio [src]="source" controls (play)="beginLive(liveAudio)" (timeupdate)="limitLive(liveAudio)" style="width:100%"></audio>
+        <p *ngIf="recordingMedia.failed()" role="status">Não foi possível carregar o áudio da captura.</p>
         <div *ngIf="!readOnly" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
           <label>Início <input type="number" min="0" step="0.1" [(ngModel)]="liveStart" style="width:80px"></label>
           <label>Fim <input type="number" min="0" step="0.1" [(ngModel)]="liveEnd" style="width:80px"></label>
@@ -34,6 +42,8 @@ import { GuideService, Step } from '../../services/guide.service';
       </div>
       <div *ngIf="!readOnly" style="display:flex;gap:8px;flex-wrap:wrap">
         <button *ngIf="!recording" (click)="start()" [disabled]="requesting || saving">{{ requesting ? 'Aguardando microfone...' : (previewUrl || step.narration_url ? 'Regravar' : 'Gravar voz') }}</button>
+        <button *ngIf="guideId && !recording && !draft" type="button" (click)="generateSpeech()"
+          [disabled]="saving || requesting || !step.text.trim()"><app-octor-loading *ngIf="synthesizing"></app-octor-loading>{{ synthesizing ? 'Gerando narração…' : 'Gerar narração' }}</button>
         <button *ngIf="recording" (click)="stop()">Parar ({{ seconds }}s)</button>
         <button *ngIf="draft && !recording" (click)="save()" [disabled]="saving">{{ saving ? 'Salvando...' : 'Salvar áudio' }}</button>
         <button *ngIf="draft && !recording" (click)="discard()" [disabled]="saving">Descartar gravação</button>
@@ -42,11 +52,13 @@ import { GuideService, Step } from '../../services/guide.service';
       <p role="status" style="font-size:12px;margin-bottom:0">{{ message }}</p>
     </section>
   `,
-  styles: ['input[type=number]{padding:8px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-input);color:var(--text-main)}button{cursor:pointer;background:var(--primary);color:white;border:0;border-radius:var(--radius-sm);padding:9px 12px}button:disabled{opacity:.5;cursor:default}']
+  styles: ['input[type=number]{padding:8px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-input);color:var(--text-main)}button{cursor:pointer;background:var(--primary);color:var(--on-primary);border:0;border-radius:var(--radius-sm);padding:9px 12px}button:disabled{opacity:.5;cursor:default}']
 })
 export class StepNarrationComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) step!: Step;
   @Input() readOnly = false;
+  @Input() guideId: number | null = null;
+  synthesizing = false;
   @ViewChild('liveAudio') liveAudio?: ElementRef<HTMLAudioElement>;
   liveStart = 0; liveEnd = 0;
   @Output() narrationSaved = new EventEmitter<Step>();
@@ -66,7 +78,7 @@ export class StepNarrationComponent implements OnChanges, OnDestroy {
    * @param guides — GuideService; contrato tipado na assinatura.
    * @returns void/undefined; efeitos nas operações do corpo.
    */
-  constructor(private guides: GuideService) {}
+  constructor(private guides: GuideService, private dialogs: DialogService) {}
   /**
    * Recalcula o estado local quando o passo recebido muda, evitando reutilizar a apresentação ou a gravação de outro passo.
    * @returns void.
@@ -109,6 +121,34 @@ export class StepNarrationComponent implements OnChanges, OnDestroy {
       error: /* Trata a falha assíncrona e mantém a mensagem/estado funcional desta operação. | @returns void/undefined; efeitos nas operações do corpo. */ () => { if (version === this.generation) { this.saving = false; this.message = 'Não foi possível salvar o trecho. Tente novamente.'; } }
     });
   }
+  async generateSpeech(): Promise<void> {
+    if (this.readOnly || !this.guideId || this.saving || this.requesting || this.recording || this.draft) return;
+    const version = this.generation;
+    const replace = !!this.step.narration_url;
+    if (replace && !await this.dialogs.confirm('Substituir o áudio atual pela narração automática?', {
+      title: 'Gerar narração', confirmText: 'Gerar e substituir',
+    })) return;
+    if (version !== this.generation || this.saving || this.requesting || this.recording || this.draft) return;
+    const text = this.step.text.trim();
+    if (!text) return;
+    this.saving = this.synthesizing = true;
+    this.message = '';
+    this.guides.generateSpeech(this.guideId, this.step.id, text, replace).subscribe({
+      next: updated => {
+        if (version !== this.generation) return;
+        // Mescla o áudio sem sobrescrever uma instrução ainda em edição no navegador.
+        this.step.narration_url = updated.narration_url;
+        this.saving = this.synthesizing = false;
+        this.message = 'Narração gerada. Ouça o resultado antes de publicar.';
+      },
+      error: error => {
+        if (version !== this.generation) return;
+        this.saving = this.synthesizing = false;
+        this.message = error.error?.detail || 'Não foi possível gerar a narração. Confira o texto e tente novamente.';
+      },
+    });
+  }
+
   /**
    * Libera os recursos mantidos pelo componente ao sair da tela, conforme os timers, listeners e objetos registrados neste fluxo.
    * @returns void.
@@ -138,6 +178,7 @@ export class StepNarrationComponent implements OnChanges, OnDestroy {
       this.recorder.stop();
     }
     this.release(); this.recorder = undefined; this.requesting = false; this.saving = false;
+    this.synthesizing = false;
     this.discard(); this.message = '';
   }
   /**

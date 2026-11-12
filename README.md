@@ -1,217 +1,89 @@
-# ⚡ OCTOR - Plataforma de Tutoriais e Procedimentos com Vídeo & IA
+# OCTOR
 
-## Documentação técnica por módulo
+Plataforma web de documentação e orientação de processos: captura de ações no navegador, guias visuais, equipes e treinamentos com avaliação.
 
-- [Front — interface Angular](front/README.md)
-- [Back — API Django, dados e tarefas](back/README.md)
-- [Extensão — captura e Me guie](extensao/README.md)
-- [Stack, comparações técnicas e arquitetura](docs/STACK.md)
+## Documentação
 
-Esses documentos descrevem a configuração e as limitações atuais. Em particular, o pipeline de vídeo existente simula progresso; não representa uma renderização completa de vídeo/legendas/avatar. As demais descrições históricas abaixo devem ser lidas com essa distinção.
+Para reconstruir o projeto na mão, comece pelo [roteiro de reconstrução](docs/RECONSTRUCAO.md).
 
-Inspirado no **Tango / Scribe**, o **OCTOR** grava ações no navegador (cliques, inputs, navegação) e transforma em procedimentos passo a passo com capturas de tela anotadas, descrições geradas por IA e, opcionalmente, vídeos narrados com legendas e avatar.
+- **[Documentação técnica completa](docs/DOCUMENTACAO-TECNICA.md)**: arquitetura, instalação, ambiente, modelos, API, segurança e operação.
+- **[Manual do usuário](docs/MANUAL-DO-USUARIO.md)**: conta, gravação, voz, editor, Manual por URL, Me guie e treinamentos.
+- [Quiz obrigatório e ranking](docs/QUIZ-OBRIGATORIO.md).
+- [Versionamento e auditoria](docs/VERSIONAMENTO-E-AUDITORIA.md).
+- [Índice da documentação](docs/README.md).
+- [Frontend](front/README.md), [backend](back/README.md), [extensão](extensao/README.md) e [stack](docs/STACK.md).
 
----
+Base consolidada em **6 de novembro de 2026**, verificada nos fontes atuais. A documentação técnica consolidada substitui descrições históricas de recursos já alterados.
 
-## 🏗️ Arquitetura do Projeto
+## Estrutura
 
 ```text
 PROJETO OCTOR/
-├── back/                # Django REST Framework + Celery
-│   ├── accounts/           # Autenticação JWT e usuários
-│   ├── guides/             # Guias, Passos (screenshots e hotspots de clique)
-│   ├── trainings/          # Treinamentos, avaliação e feedback
-│   ├── videos/             # VideoJobs e pipeline assíncrono
-│   ├── ai/                 # Tarefas de geração textual automática
-│   ├── config/             # Configurações Django, URLs e Celery
-│   ├── requirements.txt
-│   └── manage.py
-├── extensao/              # Extensão Chrome Manifest V3
-│   ├── manifest.json       # Permissões MV3 (activeTab, tabs, storage)
-│   ├── background.js       # Captura de tela (captureVisibleTab) e API
-│   ├── content.js          # Captura de cliques, seletores CSS e inputs
-│   ├── popup.html          # Interface de gravação
-│   └── popup.js            # Controles Gravar, Pausar, Finalizar e Login
-├── front/               # Single Page Application em Angular 19+
-│   ├── src/app/components/ # Login, Lista de Guias e Editor de Procedimentos
-│   └── src/app/services/   # AuthService e GuideService
-├── docs/                   # Documentação técnica
-├── scripts/                # Geração compartilhada do tema
-├── design-tokens.json      # Tokens compartilhados de interface
-└── docker-compose.yml      # PostgreSQL e Redis
+├── front/                # Angular 19: interface web
+├── back/                 # Django/DRF: API, PostgreSQL e integrações
+│   ├── accounts/         # Conta, Google, sessões e notificações
+│   ├── guides/           # Guias, passos e equipes
+│   ├── trainings/        # Treinamentos, quiz obrigatório e feedback
+│   ├── manuals/          # Capturas privadas, Manual por URL e revisão
+│   ├── ai/               # Instruções e narração
+│   └── videos/           # Pipeline de vídeo ainda simulado
+├── extensao/             # Chrome MV3: captura, voz e Me guie
+├── docs/                 # Documentação
+├── scripts/              # Ferramentas compartilhadas de tema
+├── design-tokens.json    # Tema claro e acento azul
+└── docker-compose.yml    # PostgreSQL e Redis; não executa a aplicação inteira
 ```
 
----
+## Iniciar localmente
 
-## 🚀 Como Executar
-
-Repositório: https://github.com/viituux/octor
-
-Em uma instalação nova, execute `python -m pip install -r requirements.txt` dentro do ambiente virtual do backend e copie `back/.env.example` para `back/.env`, configurando suas chaves apenas localmente.
-
-Dependências, bancos locais, capturas, credenciais e builds são ignorados pelo Git. A raiz local é `PROJETO OCTOR`; execute os comandos a partir dessa pasta. Use aspas nos caminhos absolutos porque o nome contém espaço.
-
-
-
-### 1. Backend (Django REST Framework)
+Pré-requisitos: Python, Node/npm, PostgreSQL e Chrome 116 ou superior. Execute na raiz local `D:\PROJETO OCTOR`:
 
 ```powershell
-cd back
-# Ambiente já movido: utilize o interpretador diretamente.
-# Para uma instalação nova, crie antes com: python -m venv venv
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-.\venv\Scripts\python.exe manage.py migrate
-.\venv\Scripts\python.exe manage.py runserver 8000
+# Somente para uma instalação nova; preserve um ambiente existente funcional.
+python -m venv back/venv
+back/venv/Scripts/python.exe -m pip install -r back/requirements.txt
 ```
 
-Crie seu administrador local com `python manage.py createsuperuser`.
-
-Para rodar o Celery Worker (quando o Redis estiver ativo):
-```powershell
-.\venv\Scripts\python.exe -m celery -A config worker --loglevel=info -P solo
-```
-
----
-
-### 2. Extensão do Google Chrome (MV3)
-
-1. Abra o Google Chrome e acesse `chrome://extensions/`.
-2. Ative o **Modo do desenvolvedor** (canto superior direito).
-3. Clique em **Carregar sem compactação** (Load unpacked).
-4. Selecione a pasta `PROJETO OCTOR/extension`.
-5. Fixe a extensão na barra do navegador.
-6. Clique no ícone do OCTOR:
-   - Faça login com a conta que você criou.
-   - Digite o título do guia e clique em **"🔴 Iniciar Gravação"**.
-   - Navegue por qualquer página clicando nos elementos desejados.
-   - Clique no ícone da extensão e depois em **"✅ Finalizar"**. O guia será salvo na API e o editor abrirá automaticamente!
-
----
-
-### 3. Frontend (Editor Angular)
+Se ainda não existir, copie `back/.env.example` para `back/.env`. Crie o banco PostgreSQL e configure a conexão antes das migrations. Não sobrescreva seu `.env` existente.
 
 ```powershell
-cd front
-npm ci
-npm start
+back/venv/Scripts/python.exe back/manage.py migrate
+back/venv/Scripts/python.exe back/manage.py createsuperuser
+back/venv/Scripts/python.exe back/manage.py runserver 8000
 ```
-Acesse `http://localhost:4200` no seu navegador.
 
-## Modo Me guie (primeira versão)
+Em outro terminal, entre em `front/` e execute `npm ci` e `npm start`. Abra `http://localhost:4200`.
 
-1. Inicie o backend e o frontend conforme as instruções acima.
-2. Em `chrome://extensions`, recarregue a extensão OCTOR (ou carregue a pasta `extensao`).
-3. Recarregue o editor em `http://localhost:4200` ou `http://127.0.0.1:4200` para instalar a comunicação com a extensão.
-4. Abra um guia com passos que tenham URL e seletor, e clique em **Me guie**.
-5. Uma nova aba abre o site do primeiro passo. Faça login no site, se necessário.
-6. Execute a ação indicada e use **Próximo / Pular**. O tutorial não clica nem preenche campos automaticamente.
-7. Use **Voltar**, **Tentar novamente**, **Abrir página** ou **Encerrar** conforme necessário. No último passo, clique em **Concluir**.
+No Chrome, abra `chrome://extensions`, ative o modo do desenvolvedor e carregue sem compactação a pasta **`extensao`**. Conecte a conta no painel lateral. Recarregue extensão e páginas após atualizações.
 
-O progresso fica salvo na extensão e vinculado à aba do tutorial. Recarregar ou navegar nessa aba mantém a sessão. Fechar a aba encerra a sessão. Apenas um tutorial pode ficar ativo por vez; finalize gravações antes de iniciar.
+O Compose mantém nomes legados de PostgreSQL e pode conflitar com o banco local na porta 5432. Consulte o guia técnico antes de utilizá-lo. SQLite não é uma alternativa configurada.
 
-O painel usa Shadow DOM, acompanha rolagem/redimensionamento e procura novamente elementos renderizados depois. Se o seletor não encontrar um elemento, o painel informa a falha e permite tentar novamente ou pular. Esta versão procura elementos no documento principal; iframes, Shadow DOM dos sites e páginas internas do Chrome não são suportados. Seletores antigos podem precisar de uma nova gravação se o site mudou. O botão do editor está limitado aos dois endereços locais acima.
+## Funcionalidades atuais
 
-Testes de regressão (na raiz do projeto):
+- Gravação de ações, contexto, seletores e capturas com verificações de consistência.
+- Editor de passos, instruções por IA, narração e impressão para PDF pelo navegador.
+- Biblioteca pessoal, favoritos, lixeira, compartilhamentos e equipes.
+- Conta, perfil, senha, sessões e Google condicionado à configuração OAuth.
+- Treinamentos com cinco perguntas obrigatórias nas novas versões, ranking por acertos/tempo, estrelas e comentários.
+- Notificações internas com controle de leitura.
+- **Me guie:** abre o sistema e destaca elementos; o usuário realiza as ações.
+- **Manual por URL:** coleta até seis regiões de uma página e gera um rascunho para revisão com Qwen/OpenRouter no ambiente configurado.
+
+As demais funções de IA mantêm a configuração Gemini. Chaves pertencem somente ao backend. O Manual por URL não navega autonomamente entre páginas e seus passos de referência não habilitam Me guie. O pipeline de vídeo é simulado e não produz arquivo final real. Não há captura desktop ou mascote. Treinamentos antigos preservam seu fluxo original.
+
+A configuração de desenvolvimento exige revisão de CORS, hosts, URLs, HTTPS e acesso à mídia antes de hospedar dados reais. Consulte as limitações na documentação técnica.
+
+## Verificação
+
+Na raiz:
 
 ```powershell
-node --test extensao/tests/recorder.test.cjs extensao/tests/playback.test.cjs
+back/venv/Scripts/python.exe back/manage.py check
+back/venv/Scripts/python.exe back/manage.py test manuals --noinput
+node --test front/tests/*.test.cjs
+node --test extensao/tests/*.test.cjs
 ```
 
-### Correção de localização e destaque
+Em `front/`, execute `npm run build`. O guia técnico inclui os demais testes, dados de demonstração e roteiro de aceitação.
 
-A extensão agora grava o botão/link pai ao clicar em ícones, gera seletores únicos (incluindo a posição do primeiro irmão) e guarda identificação por rótulo, tag e atributos. A reprodução usa o seletor e tenta localizar por identificação quando ele mudou, ignorando elementos ocultos. Se houver mais de um alvo equivalente, pede intervenção em vez de destacar um alvo arbitrário.
-
-O destaque acompanha alterações de layout durante a reprodução, tenta rolar até elementos que aparecem depois e usa a camada superior do navegador quando disponível para evitar deslocamentos por transformações CSS da página. Recarregue a extensão e as páginas abertas. Guias antigos usam o texto já salvo como alternativa; para capturar toda a identificação nova, grave novamente os passos problemáticos.
-
-```powershell
-node --test extensao/tests/targets.test.cjs extensao/tests/playback.test.cjs extensao/tests/recorder.test.cjs
-```
-
-### Confiabilidade das imagens gravadas
-
-A gravação tenta preparar a imagem no `pointerdown`, sem bloquear a ação do usuário. Cada tentativa compara o documento, interação, URL, alterações do DOM, rolagem, tamanho da janela e posição do alvo antes e depois da captura. Tentativas antigas, mudanças de página/aba e imagens fora do orçamento de captura são rejeitadas; o passo é preservado sem imagem e o editor informa a necessidade de revisão. O limite local usa um intervalo mínimo de 550 ms entre chamadas de captura. Não há garantia de imagem para todos os cliques rápidos. Alterações puramente visuais (por exemplo, animações sem mutação do DOM) ainda podem escapar da validação. Não há mascaramento automático de dados sensíveis nas imagens.
-
-Recarregue a extensão e as páginas abertas antes de gravar um guia novo. Os guias existentes não têm suas imagens corrigidas automaticamente.
-
-
-## Narração por passo
-
-No editor, selecione um passo e use **Narração deste passo > Gravar voz**. Autorize o microfone, fale e clique em **Parar**. Ouça a prévia e use **Salvar áudio** para persistir. É possível regravar, descartar a prévia ou excluir o áudio salvo. O limite é de 2 minutos de gravação e 15 MB por arquivo. Mudar de passo encerra a gravação e descarta a prévia não salva.
-
-O campo de narração é criado pela migração `guides.0003_step_narration` (`python manage.py migrate`). O áudio é salvo no backend em `media/narrations/`. Esta versão não inclui transcrição, narração durante a captura, reprodução no Me guie ou montagem de vídeo.
-
-Testes: `node --test front/tests/narration.test.cjs` e `python manage.py test guides.test_narration`.
-
-
-## Narrar enquanto captura
-
-1. Recarregue a extensão em chrome://extensions e a página do site.
-2. No popup, marque **Gravar com microfone** e clique em **Iniciar Gravação**.
-3. A aba auxiliar solicita acesso ao microfone quando você clica em **Ativar microfone e começar**. Ela retorna ao site após iniciar. Mantenha a aba auxiliar aberta.
-4. Fale enquanto executa o procedimento. A pausa da extensão pausa também o áudio.
-5. Clique em **Finalizar** no popup para salvar os passos e enviar o áudio. Limite: 30 minutos/60 MB.
-6. No editor, a seção **Narração deste passo** permite ouvir e ajustar o início/fim em segundos e salvar o trecho.
-
-A associação inicial usa os momentos dos cliques: cada passo recebe o intervalo desde o clique anterior; o primeiro começa no início do áudio e o último termina no fim da gravação. É uma sugestão temporal, sem reconhecimento semântico ou transcrição. O áudio integral fica salvo uma vez no guia; os passos guardam os intervalos editáveis. Uma narração individual gravada depois tem prioridade sobre o trecho da captura.
-
-Se o envio falhar, tente finalizar novamente mantendo a aba auxiliar aberta. Os passos já enviados não são reenviados. **Finalizar sem narração** permite salvar somente o guia. Fechar a aba auxiliar antes do envio perde o áudio que estava na memória, mas preserva os passos. A atualização exige a migração guides.0004_guide_capture_audio. Não inclui exportação de vídeo nem voz no Me guie.
-
-
-## Painel lateral fixo
-
-O ícone do OCTOR agora abre o painel lateral nativo do navegador, com login, título, captura, pausa, finalização e opção de microfone. O painel continua aberto ao clicar no site e navegar entre páginas. Ele pode ser fechado pelo botão do próprio navegador. Após atualizar os arquivos, recarregue a extensão em chrome://extensions e clique no ícone novamente. Requer Chrome 116 ou superior. A posição esquerda/direita é controlada pelas preferências do navegador. Não foi adicionada uma lista de tutoriais por site.
-
-
-## Editor em documento e apresentação do Me guie
-
-O editor mostra todos os passos em sequência, com navegação lateral, edição do texto no próprio cartão e controle de enquadramento. Capturas com metadados de posição recebem destaque retangular e zoom inicial de 2x centrado no elemento. Use −/+ ou Tela inteira para ajustar; o zoom é salvo no passo. Capturas antigas usam a proporção real da imagem; passos sem posição do elemento mantêm a visualização inteira ou o marcador de clique disponível. A narração permanece no passo selecionado.
-
-No Me guie, o elemento recebe um contorno e o restante da página fica escurecido. O painel tenta se posicionar ao lado do alvo e mostra progresso. O avanço continua manual, com Próximo/Pular e Concluir. Em telas com pouco espaço, o painel é limitado à área visível. Recarregue o editor, a extensão e as páginas para usar as alterações.
-
-
-## Contas de usuários e acesso com Google
-
-- Login: http://localhost:4200/login
-- Cadastro: http://localhost:4200/register (nome, usuário, e-mail e senha). O cadastro já inicia a sessão.
-- Minha conta: http://localhost:4200/account, disponível após entrar.
-- Cada usuário vê seus próprios guias. Para gravar pela extensão, entre nela com usuário/senha ou use **Entrar pelo navegador / Google**, faça login e clique em **Conectar esta conta à extensão**. Trocar de conta requer finalizar a gravação/tutorial atual.
-
-### Configurar Google posteriormente
-
-1. No Google Cloud Console, configure o consentimento OAuth e crie um Client ID do tipo **Aplicativo da Web**.
-2. Cadastre as origens JavaScript http://localhost:4200 e http://127.0.0.1:4200. Quando hospedar o app, acrescente a origem HTTPS correspondente.
-3. Instale as dependências do backend: `venv\Scripts\python.exe -m python -m pip install -r requirements.txt`.
-4. Acrescente ao arquivo `back/.env` a linha `GOOGLE_CLIENT_ID=seu-client-id.apps.googleusercontent.com`. Há um exemplo em `back/.env.google.example`. Não é necessário Client Secret neste fluxo.
-5. Reinicie o Django e recarregue a página. O botão oficial Google aparecerá quando a configuração estiver ativa.
-
-O login valida o ID token no backend com google-auth e vincula pela identificação Google (sub), com uma tentativa de uso único e nonce. Contas locais com e-mail igual não são unidas automaticamente: entre com a senha e vincule o Google em Minha conta. O login Google ainda precisa ser validado com credenciais reais após a configuração. Esta entrega não inclui recuperação de senha por e-mail.
-
-Migração: `python manage.py migrate`. Testes: `python manage.py test accounts guides.test_narration`.
-
-
-## Padrão visual
-
-As telas web, configurações, narração, barra lateral e página do microfone usam o tema claro/roxo compartilhado. As cores e medidas-base ficam em `design-tokens.json`. Após alterar esse arquivo, execute `node scripts/build-theme.cjs`. Consulte `docs/design-system.md`.
-
-## Confiabilidade das capturas
-
-A captura de cliques rápidos respeita a frequência máxima do Chrome por meio de uma fila (intervalo mínimo de 550 ms), com janela de até 5 segundos para ações pendentes. A validação usa o documento, URL, posição da página e o estado/posição do elemento original de cada ação. Alterações de DOM sem relação com esse elemento não descartam a imagem. Falhas de preparação podem ser tentadas novamente no contexto da ação. Troca de aba, navegação, controles encobertos, movidos ou alterados continuam impedindo uma captura incompatível; o passo é preservado com aviso.
-
-Após atualizar a extensão, recarregue-a em chrome://extensions e atualize a página que será gravada. Imagens ausentes em gravações antigas não podem ser reconstruídas pelo capturador.
-
-## Geração do guia inteiro e narração
-
-O botão Gerar todas as instruções processa as capturas sequencialmente, com progresso e aviso antes de substituir textos. Sucessos são salvos por passo; falhas mantêm o texto anterior. O botão Gerar instrução deste passo continua disponível.
-
-Ao finalizar uma captura com microfone, a extensão abre o editor com o sinal de geração automática. O editor transcreve a gravação, associa a fala aos intervalos de cada passo e gera as instruções usando a fala, a captura e a ação. O processamento ocorre após finalizar a captura, não durante a fala. Ao salvar uma narração individual ou alterar seu intervalo, o passo também é regenerado. O usuário deve revisar os resultados.
-
-A transcrição usa o Gemini configurado no servidor e aceita áudio inline de até 14 MB. Arquivos maiores permanecem salvos, mas a geração pela voz informa o limite e preserva os textos. As transcrições são reutilizadas enquanto arquivo e intervalos não mudarem. Falhas não removem áudio ou instruções. A API /api/guides/{id}/prepare-narration/ requer autenticação e propriedade do guia. Referência: https://ai.google.dev/gemini-api/docs/generate-content/audio
-
-
-## Treinamentos e avaliações
-
-O módulo inclui conteúdo, participação, conclusão, avaliação com estrelas e comentário, administração e dashboard. Ao concluir o procedimento, o participante segue diretamente para a avaliação. O quiz foi removido do fluxo ativo. Acesse **Meus treinamentos** na biblioteca. Guia de instalação, contas de demonstração, endpoints e roteiro de testes: [docs/trainings-feedback-quiz.md](docs/trainings-feedback-quiz.md).
-
-## Reorganização de pastas — etapa 1
-
-Consulte [o relatório da reorganização](docs/REORGANIZACAO-ETAPA-1.md). A extensão deve ser carregada novamente da pasta `extensao` após a movimentação. O ambiente virtual movido deve ser usado via `back/venv/Scripts/python.exe`; executáveis e scripts de ativação antigos podem manter caminhos anteriores.
+Repositório: [viituux/octor](https://github.com/viituux/octor).

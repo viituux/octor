@@ -7,7 +7,7 @@ from django.db import transaction
 from django.test import RequestFactory
 from django.utils import timezone
 from guides.models import Guide, Step, Workspace
-from trainings.models import Training, Participation, Feedback
+from trainings.models import Training, Participation, Feedback, QuizResult, QuizAnswer
 from trainings.services import publish
 
 
@@ -52,14 +52,25 @@ class Command(BaseCommand):
                 continue
             request = RequestFactory().get('/', HTTP_HOST='localhost:8000')
             request.user = owner
+            training.draft_questions=[{'statement':f'Qual orientação corresponde ao passo {i}?','explanation':text,
+                'alternatives':[{'text':text,'correct':True},{'text':'Ignorar a revisão dos dados.','correct':False},
+                                {'text':'Encerrar sem conferir o procedimento.','correct':False},{'text':'Alterar informações sem autorização.','correct':False}]} for i,text in enumerate(instructions,1)]
+            training.save(update_fields=['draft_questions'])
             version = publish(training, request)
             for position, user in enumerate(users[1:]):
                 part = Participation.objects.create(training=training, user=user)
                 if position == 3:
                     continue
                 moment = timezone.now() - timedelta(days=position * 32 + index * 8)
-                part.version, part.started_at, part.completed_at = version, moment - timedelta(minutes=7), moment
+                part.version, part.started_at, part.content_completed_at = version, moment - timedelta(minutes=7), moment
+                part.completed_at=moment+timedelta(minutes=3) if position<2 else None
                 part.save()
+                result=QuizResult.objects.create(training=training,user=user,version=version,attempt=1,
+                    finished_at=moment+timedelta(seconds=60),correct_count=5-position,score=(5-position)*20,time_seconds=50+position,duration_ms=(50+position)*1000)
+                QuizResult.objects.filter(pk=result.pk).update(started_at=moment+timedelta(seconds=10-position))
+                for index,question in enumerate(version.questions.all()):
+                    alternative=question.alternatives.filter(correct=index<5-position).first()
+                    QuizAnswer.objects.create(result=result,question=question,alternative=alternative,correct=alternative.correct)
                 if position == 2:
                     continue
                 feedback = Feedback.objects.create(training=training, user=user, stars=5-position,

@@ -1,15 +1,16 @@
 # Extensão — captura e Me guie do OCTOR
 
+Referência consolidada em 06/11/2026: [documentação técnica](../docs/DOCUMENTACAO-TECNICA.md) e [Manual por URL](../docs/MANUAL-POR-URL.md). A extensão 1.2.0 inclui leitor de página e ponte para coleta; isso não constitui navegação autônoma. Carregue a pasta `extensao` e recarregue as páginas após atualizar.
+
 Extensão **OCTOR — Gravador de Procedimentos** para navegador Chromium. Registra ações e capturas para criar um guia na API e apresenta instruções sobre o site no modo Me guie. O [frontend](../front/README.md) revisa o material; o [backend](../back/README.md) valida acesso e persiste os dados.
 
 ## Tecnologias e versões
 
-- Manifest V3; extensão na versão `1.0.0`, conforme `manifest.json`.
+- Manifest V3; extensão na versão `1.2.0`, conforme `manifest.json`.
 - Chrome mínimo `116`, declarado no manifesto por causa das APIs utilizadas, incluindo painel lateral.
 - JavaScript nativo, HTML e CSS; worker ES module com `background.type = module`.
 - APIs Chrome: `tabs`, `storage`, `scripting`, `sidePanel`, `activeTab`; APIs web de DOM, mídia, arquivos e HTTP.
-- Sem `package.json`, dependências npm ou empacotador próprio. Node é usado nos testes, não para executar a extensão no navegador.
-- Testes inspecionados com Node.js 24.21.0 e `node:test`, `assert`, `vm`, `fs` e `path`.
+- A extensão usa JavaScript nativo e é carregada pelo Chrome a partir do manifesto.
 
 As versões de Chrome realmente instalado e a compatibilidade de outros navegadores não estão fixadas no repositório; Chrome 116 é o mínimo declarado, não uma indicação para usar navegador antigo.
 
@@ -26,7 +27,6 @@ extensao/
 ├── popup.html / .js / .css    # painel lateral de controle
 ├── live-recorder.html / .js  # contexto dedicado ao microfone
 ├── theme.css / theme.js      # gerados pelo script da raiz
-└── tests/                    # mocks Chrome/DOM e testes de regressão
 ```
 
 ## Instalar e configurar
@@ -41,7 +41,9 @@ Após a reorganização de pastas, a entrada antiga pode continuar apontando par
 
 ### Configuração e .env
 
-**Não há `.env` carregado pela extensão.** O worker usa `DEFAULT_API_BASE = http://localhost:8000/api` e `DEFAULT_FRONTEND_BASE = http://localhost:4200`. A inicialização mantém `apiBase` no storage, mas o painel não oferece configuração completa de ambiente público.
+A extensão carrega `environment.js`. A configuração local aponta para o frontend na porta 4200 e a API na porta 8000. Para homologação, defina `frontendOrigin` e `appOrigins` com o domínio HTTPS do OCTOR, `apiBase` com a URL HTTPS que termina em `/api` e adicione o padrão do frontend a `externally_connectable.matches` no manifesto. Recarregue a extensão em `chrome://extensions` e reconecte a conta.
+
+Em `playbackTestOrigins`, inclua somente origens HTTPS dedicadas à homologação dos procedimentos. Essa lista autoriza o site onde o procedimento será guiado. O domínio do OCTOR pertence a `appOrigins`.
 
 As origens locais aceitas estão em `manifest.json` (`externally_connectable`) e nas verificações de mensagens de `background.js`, `playback-background.js` e `playback.js`. `popup.js` também contém o endereço de login. Trocar somente uma constante não adapta toda a comunicação a outro domínio.
 
@@ -67,7 +69,11 @@ A extensão grava e envia áudio; a preparação/transcrição e a geração das
 
 O editor solicita `START_PLAYBACK`. O worker mantém sessão e progresso ligados a uma aba, abre o endereço do passo e só aceita comandos da aba correspondente. O script da página resolve o alvo, injeta painel/destaque, rola a tela e espera o usuário executar a ação e avançar.
 
-**O Me guie não clica nos botões nem preenche formulários do procedimento automaticamente.** Entretanto, abre URLs e atua sobre a interface real com overlay/rolagem. Próximo/Pular não comprova que a ação foi realizada. Não há simulador isolado nem bloqueio por ambiente de produção implementado. URLs são validadas por protocolo HTTP/HTTPS; isso não constitui uma lista de domínios permitidos.
+O Me guie apresenta instruções, destaca elementos e rola a página. O participante decide se executa a ação. Avançar registra o progresso do tutorial sem verificar o resultado da operação.
+
+Por padrão, os passos interativos só podem usar `localhost`, `127.0.0.1` ou `[::1]`. Para liberar um sistema de homologação remoto, o responsável pela extensão deve cadastrar sua origem HTTPS exata (esquema, host e porta) em `PLAYBACK_TEST_ORIGINS`, no `playback-background.js`, e recarregar a extensão. Um passo fora da lista impede a abertura do tutorial. Consulte as capturas no OCTOR para acompanhar procedimentos gravados em produção.
+
+Durante o Me guie, o Chrome bloqueia as requisições de rede atribuídas à aba guiada para origens fora do roteiro, incluindo redirecionamentos e chamadas a APIs. A rota de retorno ao OCTOR é liberada para concluir treinamentos. Serviços em outras abas ou no servidor de homologação ficam fora desse filtro. Use um ambiente com dados e integrações de teste, pois o participante ainda pode acionar os controles desse ambiente. Se uma dependência externa for bloqueada, use as capturas para consultar o passo.
 
 ## Mensagens, sessão e API
 
@@ -98,11 +104,8 @@ Ignorar eventos de senha não mascara automaticamente dados pessoais em imagens 
 Na raiz `PROJETO OCTOR`:
 
 ```powershell
-node --test extensao/tests/*.test.cjs
-node --test extensao/tests/*.test.cjs front/tests/*.test.cjs
 ```
 
-Não é preciso instalar dependências npm dentro de `extensao`. A suíte conjunta, que inclui os testes web de captura/voz, teve 69 testes aprovados na etapa anterior. Os mocks não substituem um teste real das permissões de Chrome e do microfone.
 
 Teste manual em ambiente controlado: gravar dois cliques, pausar/retomar, finalizar e verificar quantidade de passos/imagens; repetir com voz mantendo sua aba aberta; iniciar Me guie, conferir elemento/URL, avançar, voltar e encerrar. Use dados fictícios: este teste não é uma simulação do sistema acessado.
 

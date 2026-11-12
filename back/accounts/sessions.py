@@ -1,6 +1,11 @@
 # Emissão e renovação de JWTs com a versão atual de sessão, sem incluir segredos de provedores na resposta.
 # Dependência: contratos e funções do módulo .authentication reutilizados neste fluxo.
 from .authentication import version
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
 # Dependência: validação, emissão e renovação dos tokens JWT.
 from rest_framework_simplejwt.exceptions import InvalidToken
 # Dependência: validação, emissão e renovação dos tokens JWT.
@@ -9,6 +14,7 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.views import TokenRefreshView
 # Dependência: usuários, validação de senha e autenticação do Django.
 from django.contrib.auth.models import User
+from django.db import transaction
 
 
 # Emite a sessão de acesso/renovação para o usuário usando a versão atual de revogação.
@@ -27,9 +33,10 @@ class AccountRefreshSerializer(TokenRefreshSerializer):
     # Parâmetros — attrs: atributos de entrada do serializer.
     # Retorno: resultado de super().validate(...).
     # Falhas explícitas no fluxo: InvalidToken. Consulte os blocos try/except para as conversões locais.
+    @transaction.atomic
     def validate(self, attrs):
         refresh=self.token_class(attrs['refresh'])
-        user=User.objects.filter(pk=refresh.get('user_id'),is_active=True).first()
+        user=User.objects.select_for_update().filter(pk=refresh.get('user_id'),is_active=True).first()
         if not user or refresh.get('session_version',0) != version(user):
             raise InvalidToken('Este acesso foi encerrado. Entre novamente.')
         return super().validate(attrs)
@@ -37,3 +44,25 @@ class AccountRefreshSerializer(TokenRefreshSerializer):
 
 class AccountRefreshView(TokenRefreshView):
     serializer_class=AccountRefreshSerializer
+
+
+class ExtensionSessionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        return Response(session_tokens(request.user))
+
+
+class LogoutView(APIView):
+    # Revoga o refresh mesmo quando o token de acesso já expirou.
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        raw = request.data.get('refresh') if isinstance(request.data, dict) else None
+        if isinstance(raw, str):
+            try:
+                RefreshToken(raw).blacklist()
+            except TokenError:
+                pass
+        return Response(status=204)

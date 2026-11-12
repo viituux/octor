@@ -1,0 +1,15 @@
+[Unit]
+Description=OCTOR Django API
+After=network.target postgresql.service
+
+[Service]
+User=octor
+Group=octor
+WorkingDirectory=/srv/octor/back
+EnvironmentFile=/srv/octor/back/.env
+ExecStart=/srv/octor/back/venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 1 --threads 2 --timeout 180 config.wsgi:application
+Restart=on-failure
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

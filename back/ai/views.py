@@ -3,6 +3,7 @@
 from rest_framework.views import APIView
 # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
 from rest_framework import permissions, serializers
 # Dependência: consulta de objetos com resposta HTTP 404 padronizada.
@@ -12,7 +13,7 @@ from guides.models import Guide
 # Dependência: contratos e funções do módulo guides.serializers reutilizados neste fluxo.
 from guides.serializers import GuideDetailSerializer, StepSerializer
 # Dependência: contratos e funções do módulo .tasks reutilizados neste fluxo.
-from .tasks import generate_steps, GenerationError
+from .tasks import generate_steps, GenerationConflict, GenerationError
 
 
 class GenerationRequestSerializer(serializers.Serializer):
@@ -20,7 +21,19 @@ class GenerationRequestSerializer(serializers.Serializer):
     prompt_mode = serializers.ChoiceField(choices=['automatic', 'manual'], required=False)
 
 
+class StepGenerationThrottle(UserRateThrottle):
+    scope = 'step_generation'
+    rate = '60/min'
+
+
+class NarrationPreparationThrottle(UserRateThrottle):
+    scope = 'narration_preparation'
+    rate = '10/min'
+
+
 class GenerateGuideTextView(APIView):
+    throttle_classes = [StepGenerationThrottle]
+
     # list: permissões verificadas antes da execução da view.
     permission_classes = [permissions.IsAuthenticated]
 
@@ -37,6 +50,8 @@ class GenerateGuideTextView(APIView):
         payload.is_valid(raise_exception=True)
         try:
             generate_steps(guide, payload.validated_data['prompt'], step=step, force_automatic_prompt=payload.validated_data.get('prompt_mode') == 'automatic')
+        except GenerationConflict as error:
+            return Response({'detail': str(error)}, status=409)
         except GenerationError as error:
             return Response({'detail': str(error)}, status=503)
         serializer = StepSerializer(step, context={'request': request}) if step is not None else GuideDetailSerializer(guide, context={'request': request})
@@ -44,6 +59,7 @@ class GenerateGuideTextView(APIView):
 
 
 class PrepareNarrationView(APIView):
+    throttle_classes = [NarrationPreparationThrottle]
     # list: permissões verificadas antes da execução da view.
     permission_classes = [permissions.IsAuthenticated]
 

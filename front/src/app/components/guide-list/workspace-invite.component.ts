@@ -1,3 +1,4 @@
+import {OctorLogoComponent} from '../shared/octor-logo.component';
 /** Biblioteca: organiza procedimentos por contexto, seção e equipe; alterações de acesso e exclusão são confirmadas pela API. */
 /**
  * Dependência ({Component,OnInit}): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
@@ -15,7 +16,7 @@ import {ActivatedRoute,Router,RouterLink} from '@angular/router';
  * Dependência ({GuideService}): contratos e comportamento compartilhados de ../../services/guide.service.
  */
 import {GuideService} from '../../services/guide.service';
-@Component({standalone:true,imports:[CommonModule,RouterLink],template:`<main><a routerLink="/guides">OCTOR</a><h1>Convite para a equipe</h1><p *ngIf="name">Você foi convidado para {{name}}.</p><p role="alert">{{message}}</p><button *ngIf="name" [disabled]="busy" (click)="accept()">{{busy?'Entrando…':'Aceitar convite'}}</button><a routerLink="/guides">Ir à biblioteca</a><a routerLink="/account">Verificar minha conta</a></main>`,styles:[`main{max-width:520px;margin:12vh auto;padding:32px;font-family:Arial;line-height:1.8}button{background:var(--primary);color:var(--on-primary);border:0;border-radius:9px;padding:12px;cursor:pointer}a{display:block;color:var(--primary);margin:15px 0}h1{font-size:28px}`]})
+@Component({standalone:true,imports:[OctorLogoComponent,CommonModule,RouterLink],template:`<main><a routerLink="/guides"><app-octor-logo></app-octor-logo></a><h1>Convite para a equipe</h1><p *ngIf="name">Você foi convidado para {{name}}.</p><p role="alert">{{message}}</p><button *ngIf="name" [disabled]="busy" (click)="accept()">{{busy?'Entrando…':'Aceitar convite'}}</button><a routerLink="/guides">Ir à biblioteca</a><a routerLink="/account">Verificar minha conta</a></main>`,styles:[`main{max-width:520px;margin:12vh auto;padding:32px;font-family:Arial;line-height:1.8}button{background:var(--primary);color:var(--on-primary);border:0;border-radius:9px;padding:12px;cursor:pointer}a{display:block;color:var(--primary);margin:15px 0}h1{font-size:28px}`]})
 export class WorkspaceInviteComponent implements OnInit{
  name='';message='Carregando convite…';/* boolean: bloqueia submissões repetidas enquanto a operação atual aguarda resposta. */ busy=false;/* credencial de acesso ou signal correspondente; seu formato e uso seguem o contrato da sessão. */ token='';
  /**

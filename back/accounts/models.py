@@ -10,6 +10,8 @@ from django.dispatch import receiver
 
 
 class UserSettings(models.Model):
+    onboarding_status=models.CharField(max_length=12,default='pending',choices=[('pending','Pendente'),('completed','Concluído'),('skipped','Pulado'),('legacy','Conta anterior ao tour')])
+    onboarding_finished_at=models.DateTimeField(null=True,blank=True)
     LLM_PROVIDERS = [
         ("gemini", "Google Gemini"),
         ("openai", "OpenAI (GPT-4o)"),
@@ -49,7 +51,9 @@ def create_or_update_user_settings(sender, instance, created, **kwargs):
         UserSettings.objects.create(user=instance)
     else:
         if hasattr(instance, "settings"):
-            instance.settings.save()
+            # Uma relação em cache pode estar antiga; editar o perfil não deve
+            # sobrescrever o estado do tour ou a versão de sessão gravados por outra requisição.
+            instance.settings.save(update_fields=['updated_at'])
 
 
 class GoogleAccount(models.Model):
@@ -57,3 +61,51 @@ class GoogleAccount(models.Model):
     subject = models.CharField(max_length=255, unique=True)
     email = models.EmailField()
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class Notification(models.Model):
+    """Aviso persistente de um evento confirmado, visível somente ao destinatário."""
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    kind = models.CharField(max_length=40)
+    title = models.CharField(max_length=160)
+    message = models.TextField()
+    path = models.CharField(max_length=250, blank=True, default='')
+    read_at = models.DateTimeField(null=True, blank=True)
+    release_version = models.CharField(max_length=40, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [models.Index(fields=['recipient', 'read_at'], name='notification_recipient_read')]
+        constraints = [
+            models.UniqueConstraint(fields=['recipient', 'release_version'], name='notification_recipient_release'),
+        ]
+
+
+class TrainingDataConsent(models.Model):
+    """Recibo de aceite do texto apresentado para dados de treinamento."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='training_data_consents')
+    version = models.CharField(max_length=24)
+    term_sha256 = models.CharField(max_length=64)
+    accepted_at = models.DateTimeField(auto_now_add=True)
+    source = models.CharField(max_length=16)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'version'], name='training_consent_user_version'),
+        ]
+
+
+class SupportReport(models.Model):
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name="support_reports")
+    subject = models.CharField(max_length=120, verbose_name="assunto")
+    description = models.CharField(max_length=2000, verbose_name="descrição")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="recebido em")
+    resolved = models.BooleanField(default=False, verbose_name="resolvido")
+
+    class Meta:
+        verbose_name = "relato de suporte"
+        verbose_name_plural = "relatos de suporte"
+
+    def __str__(self):
+        return self.subject

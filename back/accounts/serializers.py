@@ -11,6 +11,8 @@ from django.core.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 # Dependência: contratos e funções do módulo .models reutilizados neste fluxo.
 from .models import UserSettings
+from .training_consent import accept_training_consent, require_current_version
+from django.db import transaction
 
 
 class UserSettingsSerializer(serializers.ModelSerializer):
@@ -47,10 +49,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     email = serializers.EmailField(required=True)
     first_name = serializers.CharField(required=True, max_length=150)
+    consent_version = serializers.CharField(max_length=24, write_only=True)
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "first_name", "password"]
+        fields = ["id", "username", "email", "first_name", "password", "consent_version"]
         read_only_fields = ["id"]
 
     # Valida o campo `username` antes de aceitá-lo no contrato de entrada de RegisterSerializer.
@@ -86,8 +89,13 @@ class RegisterSerializer(serializers.ModelSerializer):
     # Cria o recurso de RegisterSerializer usando os dados e vínculos definidos neste fluxo.
     # Parâmetros — validated_data: dicionário após a validação do serializer.
     # Retorno: resultado de User.objects.create_user(...).
+    @transaction.atomic
     def create(self, validated_data):
-        return User.objects.create_user(**validated_data)
+        version = validated_data.pop('consent_version')
+        require_current_version(version)
+        user = User.objects.create_user(**validated_data)
+        accept_training_consent(user, version, 'registration')
+        return user
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):

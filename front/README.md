@@ -1,6 +1,10 @@
 # Front — interface web do OCTOR
 
+Referência consolidada em 06/11/2026: [documentação técnica](../docs/DOCUMENTACAO-TECNICA.md) e [manual do usuário](../docs/MANUAL-DO-USUARIO.md). A interface atual inclui Manual por URL, revisão de seções/passos e central de notificações. Novas versões exigem quiz obrigatório e ranking. Consulte as rotas atuais no documento consolidado.
+
 Aplicação Angular que apresenta o produto **OCTOR**: acesso à conta, biblioteca de procedimentos, editor, exportação e treinamentos. Consome a API do módulo [back](../back/README.md) e conversa com a [extensão](../extensao/README.md) para gravação e Me guie. A autorização definitiva e a confirmação do progresso pertencem ao servidor.
+
+Atualização: [Quiz obrigatório e ranking](../docs/QUIZ-OBRIGATORIO.md) descreve o contrato atual de treinamento e substitui referências anteriores à remoção do quiz.
 
 ## Tecnologias e versões
 
@@ -36,7 +40,6 @@ front/
 │       │   └── shared/             # ícones de interface
 │       └── services/               # clientes HTTP, sessão e guards
 ├── public/                         # arquivos estáticos copiados pelo builder
-├── tests/                          # testes Node dos componentes de captura/voz
 ├── angular.json                    # projeto octor e comandos de build/serve
 └── package.json / package-lock.json
 ```
@@ -104,8 +107,6 @@ Guards organizam a navegação, mas não substituem as permissões dos endpoints
 Na raiz `PROJETO OCTOR`:
 
 ```powershell
-node --test front/tests/*.test.cjs
-node --test extensao/tests/*.test.cjs front/tests/*.test.cjs
 ```
 
 No módulo `front`:
@@ -114,7 +115,6 @@ No módulo `front`:
 npm run build
 ```
 
-Não há script `npm test` configurado. Os testes atuais de captura/voz transpilam os componentes e usam objetos simulados; não constituem teste integral de todas as telas em navegador. Na etapa anterior, a suíte conjunta teve 69 testes aprovados e o build de produção passou.
 
 Validação manual: entrar, criar/editar guia, salvar instrução, testar enquadramento, exportar PDF, conectar extensão e concluir treinamento e enviar avaliação. Google e IA exigem configuração válida para testar a integração real.
 
@@ -137,3 +137,7 @@ Validação manual: entrar, criar/editar guia, salvar instrução, testar enquad
 | Perfil/guia continua visível após erro | Conferir a resposta HTTP: a interface preserva dados em falhas para permitir nova tentativa. |
 
 Veja também os [relatórios de reorganização](../docs/REORGANIZACAO-ETAPA-1.md) e [comentários](../docs/COMENTARIOS-ETAPA-2.md).
+
+### Endereço da API
+
+Em localhost, o frontend usa `http://localhost:8000/api/`. Em outros domínios, usa `/api/` na mesma origem. Se a API estiver em outro domínio, inclua em `src/index.html`, dentro de `head`, a tag `<meta name="octor-api-base" content="https://api.exemplo.com/api/">` antes de gerar o build. Configure o CORS do backend para permitir a origem HTTPS do frontend.

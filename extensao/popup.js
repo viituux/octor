@@ -1,5 +1,5 @@
 /** Painel lateral: apresenta a sessão de gravação e envia comandos ao worker, que mantém o estado entre navegações. */
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = (globalThis.OctorEnvironment?.apiBase ?? "http://localhost:8000/api");
 
 document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded no contexto deste módulo; o estado e as verificações do handler delimitam quando a ação é aceita. | @returns void/undefined; efeitos nas operações do corpo. */ async () => {
   const authSection = document.getElementById("authSection");
@@ -41,7 +41,7 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
   }
 
   document.getElementById('btnBrowserLogin').addEventListener('click', /* Trata evento click no contexto deste módulo; o estado e as verificações do handler delimitam quando a ação é aceita. | @returns void/undefined; efeitos nas operações do corpo. */ () => {
-    chrome.tabs.create({url:'http://localhost:4200/login?extension='+chrome.runtime.id});
+    chrome.tabs.create({url:globalThis.OctorEnvironment.frontendOrigin+'/login?extension='+chrome.runtime.id});
   });
   // Login
   btnLogin.addEventListener("click", /* Trata evento click no contexto deste módulo; o estado e as verificações do handler delimitam quando a ação é aceita. | @returns void/undefined. | @throws Error nos ramos que rejeitam a operação; blocos catch mantêm o tratamento existente. */ async () => {
@@ -58,6 +58,7 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
     try {
       btnLogin.disabled = true;
       btnLogin.textContent = "Entrando...";
+      await chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
       const res = await fetch(`${API_BASE}/auth/login/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -95,7 +96,14 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
   btnLogout.addEventListener("click", /* Trata evento click no contexto deste módulo; o estado e as verificações do handler delimitam quando a ação é aceita. | @returns void/undefined. */ async () => {
     const active=await chrome.storage.local.get(["isRecording","playback"]);
     if(active.isRecording || active.playback){showRecorderError("Finalize a gravação ou tutorial antes de sair.");return;}
+    const {refreshToken} = await chrome.storage.local.get('refreshToken');
     await chrome.storage.local.remove(["authToken", "refreshToken", "currentUser"]);
+    if (refreshToken) {
+      fetch(API_BASE + '/auth/logout/', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({refresh: refreshToken}), keepalive: true,
+      }).catch(() => {});
+    }
     recorderSection.classList.add("hidden");
     authSection.classList.remove("hidden");
   });
@@ -178,8 +186,8 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
     }
   }
   btnFinish.addEventListener('click', /* Trata evento click no contexto deste módulo; o estado e as verificações do handler delimitam quando a ação é aceita. | @returns resultado de finish(...). */ () => finish());
-  document.getElementById('btnFinishSilent').addEventListener('click', /* Trata evento click no contexto deste módulo; o estado e as verificações do handler delimitam quando a ação é aceita. | @returns void/undefined; efeitos nas operações do corpo. */ () => {
-    if (confirm('Salvar o guia sem a gravação de voz?')) finish(true);
+  document.getElementById('btnFinishSilent').addEventListener('click', async () => {
+    if (await OctorDialogs.confirm('Salvar o guia sem a gravação de voz? Os passos e as capturas serão mantidos.', { title: 'Finalizar sem narração', confirmText: 'Salvar sem narração' })) await finish(true);
   });
 
   /**
@@ -233,4 +241,19 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
       }
     }
   });
+});
+
+// Acompanhar a coleta sem misturar seus prints com o gravador de cliques.
+document.addEventListener('DOMContentLoaded', async () => {
+  const render = async () => {
+    const {manualCapture:session}=await chrome.storage.local.get('manualCapture');
+    document.getElementById('manualStatusPanel').classList.toggle('hidden',!session);
+    document.getElementById('manualCaptureMessage').textContent=session?.message||'';
+    document.getElementById('btnManualContinue').classList.toggle('hidden',session?.status!=='attention');
+    document.getElementById('btnManualStop').classList.toggle('hidden',!session?.active);
+  };
+  document.getElementById('btnManualContinue').addEventListener('click',async()=>{const response=await chrome.runtime.sendMessage({action:'CONTINUE_MANUAL'});if(!response?.success)document.getElementById('manualCaptureMessage').textContent=response?.error||'Não foi possível continuar.';});
+  document.getElementById('btnManualStop').addEventListener('click',async()=>{const {manualCapture}=await chrome.storage.local.get('manualCapture');await chrome.runtime.sendMessage({action:'STOP_MANUAL',runId:manualCapture?.runId});});
+  chrome.storage.onChanged.addListener(changes=>{if(changes.manualCapture)void render();});
+  await render();
 });

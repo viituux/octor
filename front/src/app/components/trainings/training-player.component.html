@@ -1,4 +1,4 @@
-<!-- O procedimento concluído libera diretamente a avaliação, sem etapa intermediária. -->
+<!-- O backend define a etapa liberada e mantém o gabarito oculto durante a tentativa. -->
 <app-training-nav></app-training-nav>
 <main class="training-page player">
   <a routerLink="/trainings">← Meus treinamentos</a>
@@ -10,15 +10,54 @@
       <span class="eyebrow">TREINAMENTO · {{training.status==='archived'?'ARQUIVADO':'APRENDIZADO'}}</span>
       <h1>{{training.title}}</h1><p class="muted">{{training.description}}</p>
       <p *ngIf="training.status==='archived'" class="muted">Treinamento arquivado: o conteúdo e o histórico continuam disponíveis, mas novas atividades estão bloqueadas.</p>
-      <ol class="flow" aria-label="Etapas do treinamento"><li [class.active]="stage==='content'">1. Procedimento</li><li [class.active]="stage==='feedback'||stage==='done'">2. Avaliação</li></ol>
+      <ol class="flow" aria-label="Etapas do treinamento"><li [class.active]="stage==='content'">1. Procedimento</li><li *ngIf="needsQuiz" [class.active]="stage==='quiz'||stage==='result'">2. Quiz obrigatório</li><li [class.active]="stage==='feedback'||stage==='done'">{{needsQuiz?'3':'2'}}. Avaliação</li></ol>
     </header>
     <section *ngIf="stage==='content'" id="training-stage" tabindex="-1">
-      <div class="panel" *ngIf="!training.progress.started_at"><h2>Pronto para começar?</h2><p>Leia os passos e conclua o conteúdo para avaliar o treinamento.</p><button class="primary" (click)="start()" [disabled]="busy||training.status!=='published'">Iniciar treinamento</button></div>
+      <div class="panel" *ngIf="!training.progress.started_at"><h2>Pronto para começar?</h2><p>Leia os passos e finalize o conteúdo para continuar. As novas versões exigem quiz e avaliação para concluir.</p><app-training-consent *ngIf="training.status==='published'" [useSaved]="true" (versionChange)="consentVersion=$event"></app-training-consent><button class="primary" (click)="start()" [disabled]="busy||!consentVersion||training.status!=='published'">Iniciar treinamento</button></div>
       <ng-container *ngIf="training.progress.started_at">
-        <div class="row"><span>Passo {{stepIndex+1}} de {{steps.length}}</span><button (click)="playback()" [disabled]="busy||training.status!=='published'">▶ Me guie no sistema</button></div>
-        <article class="panel" *ngIf="step"><h2>Passo {{stepIndex+1}}</h2><p class="instruction">{{step.text}}</p><app-step-capture [step]="step"></app-step-capture><app-step-narration *ngIf="step.narration_url||step.live_narration_url" [step]="step" [readOnly]="true"></app-step-narration></article>
-        <div class="row"><button (click)="stepIndex=stepIndex-1" [disabled]="stepIndex===0||busy">← Anterior</button><button *ngIf="stepIndex<steps.length-1" class="primary" (click)="stepIndex=stepIndex+1" [disabled]="busy">Próximo passo →</button><button *ngIf="stepIndex===steps.length-1 && !training.progress.completed_at" class="primary" (click)="complete()" [disabled]="busy||training.status!=='published'">Concluir conteúdo e avaliar</button><button *ngIf="training.progress.completed_at" class="primary" (click)="evaluate()" [disabled]="busy">{{completedFeedback?'Ver minha avaliação':'Avaliar treinamento'}}</button></div>
+        <div class="row">
+          <span>Passo {{stepIndex+1}} de {{steps.length}}</span>
+          <button *ngIf="!isReferenceManual" (click)="playback()" [disabled]="busy||training.status!=='published'">▶ Me guie no sistema</button>
+          <button *ngIf="isReferenceManual && step" type="button" (click)="focus('training-step-reference')">Ver instrução e captura deste passo</button>
+          <a *ngIf="referencePageUrl as url" class="button" [href]="url" target="_blank" rel="noopener noreferrer">Abrir site de referência (nova aba)</a>
+        </div>
+        <p *ngIf="isReferenceManual" class="muted">Este treinamento foi criado a partir de capturas de referência. Siga as instruções no OCTOR e use “Próximo passo” para avançar.</p>
+        <article class="panel" id="training-step-reference" tabindex="-1" *ngIf="step"><h2>Passo {{stepIndex+1}}</h2><p class="instruction">{{step.text}}</p><app-step-capture [step]="step"></app-step-capture><app-step-narration *ngIf="step.narration_url||step.live_narration_url" [step]="step" [readOnly]="true"></app-step-narration></article>
+        <div class="row"><button (click)="changeStep(stepIndex-1)" [disabled]="stepIndex===0||busy">← Anterior</button><button *ngIf="stepIndex<steps.length-1" class="primary" (click)="changeStep(stepIndex+1)" [disabled]="busy">Próximo passo →</button><button *ngIf="stepIndex===steps.length-1 && !(training.progress.content_completed_at||training.progress.completed_at)" class="primary" (click)="complete()" [disabled]="busy||training.status!=='published'">Finalizar conteúdo e continuar</button><button *ngIf="training.progress.content_completed_at||training.progress.completed_at" class="primary" (click)="evaluate()" [disabled]="busy">{{completedFeedback?'Ver minha avaliação':'Continuar treinamento'}}</button></div>
       </ng-container>
+    </section>
+    <section *ngIf="stage==='quiz'" id="training-stage" tabindex="-1" class="panel">
+      <span class="eyebrow">QUIZ OBRIGATÓRIO · 5 PERGUNTAS</span>
+      <ng-container *ngIf="!quiz?.question">
+        <h2>Vamos validar o que você aprendeu?</h2>
+        <p>Responda às cinco perguntas para concluir. Cada acerto vale 20 pontos. O tempo do quiz desempata a pontuação. Depois de confirmar, uma resposta não pode ser alterada.</p>
+        <p class="muted">O relógio começa ao iniciar o quiz e continua contando se você sair. As respostas confirmadas ficam salvas. O gabarito aparece somente ao final.</p>
+        <p *ngIf="retryAvailable" class="alert">O responsável liberou uma nova tentativa. Ela substituirá sua tentativa anterior no ranking quando começar.</p>
+        <button class="primary" (click)="startQuiz()" [disabled]="busy||training.status!=='published'">{{retryAvailable?'Iniciar nova tentativa':'Iniciar quiz'}}</button>
+      </ng-container>
+      <form *ngIf="quiz?.question as q" (ngSubmit)="answer()">
+        <div class="row"><strong>Pergunta {{quiz.result.answered+1}} de 5</strong><span>Tempo decorrido: {{duration(elapsed)}}</span></div>
+        <progress [value]="quiz.result.answered" max="5" aria-label="Perguntas respondidas"></progress>
+        <fieldset [disabled]="busy||training.status!=='published'"><legend class="quiz-question">{{q.statement}}</legend>
+          <label *ngFor="let a of q.alternatives" class="quiz-option" [class.chosen]="selected===a.id"><input type="radio" name="alternative" [value]="a.id" [(ngModel)]="selected" required><span>{{a.text}}</span></label>
+        </fieldset>
+        <button class="primary" [disabled]="busy||selected===null||training.status!=='published'">{{busy?'Salvando resposta…':quiz.result.answered===4?'Finalizar quiz':'Confirmar e continuar'}}</button>
+      </form>
+    </section>
+    <section *ngIf="stage==='result'" id="training-stage" tabindex="-1" class="panel">
+      <h2>Resultado do quiz</h2>
+      <div class="quiz-score-summary">
+        <img *ngIf="scoreReaction as reaction" class="quiz-score-reaction"
+          [src]="'assets/img/octos/emocoes/' + reaction.image" width="144" height="144" alt="">
+        <div>
+          <p class="quiz-score">{{quizResult.correct_count}}/5 · {{quizResult.score}} pontos</p>
+          <p *ngIf="scoreReaction as reaction" class="quiz-score-message">{{reaction.message}}</p>
+          <p>Tempo: {{duration(quizResult.time_seconds)}}. Para concluir o treinamento, envie sua avaliação.</p>
+        </div>
+      </div>
+      <ng-container [ngTemplateOutlet]="quizRanking"></ng-container>
+      <article *ngFor="let answer of quizResult.review" class="quiz-review"><h3>{{answer.question}}</h3><p>{{answer.correct?'Acertou':'Errou'}} · Sua resposta: {{answer.selected}}</p><p *ngIf="!answer.correct">Resposta correta: {{answer.correct_text}}</p><p *ngIf="answer.explanation" class="muted">{{answer.explanation}}</p></article>
+      <button class="primary" (click)="feedbackStage()">Continuar para avaliação</button>
     </section>
     <form *ngIf="stage==='feedback'" id="training-stage" tabindex="-1" class="panel" (ngSubmit)="sendFeedback()">
       <span class="eyebrow">CONTEÚDO CONCLUÍDO</span><h2>Como foi este treinamento?</h2>
@@ -28,5 +67,52 @@
       </fieldset><button type="button" (click)="review()">Revisar conteúdo</button>
     </form>
     <section *ngIf="stage==='done'" id="training-stage" tabindex="-1" class="panel result"><h2>{{confirmation}}</h2><p>{{completedFeedback.stars}} de 5 estrelas</p><blockquote *ngIf="completedFeedback.comment">{{completedFeedback.comment}}</blockquote><a class="button primary" routerLink="/trainings">Ver meus treinamentos</a><button (click)="review()">Revisar conteúdo</button></section>
+    <ng-container *ngIf="needsQuiz && stage==='done'" [ngTemplateOutlet]="quizRanking"></ng-container>
+
+    <ng-template #quizRanking>
+      <section class="quiz-podium" aria-labelledby="quiz-podium-heading">
+        <span class="eyebrow">CLASSIFICAÇÃO DO QUIZ</span>
+        <h2 id="quiz-podium-heading">Pódio do treinamento</h2>
+        <p class="muted">
+          Mais acertos primeiro. Em caso de empate na pontuação, vale o menor tempo.
+        </p>
+        <p *ngIf="rankingLoading" role="status">Atualizando classificação…</p>
+        <p *ngIf="rankingError" role="alert">Não foi possível atualizar a classificação.
+          <button type="button" (click)="refreshRanking()">Tentar novamente</button>
+        </p>
+        <ng-container *ngIf="!rankingLoading && !rankingError">
+          <p *ngIf="ownRankingPosition as position" class="quiz-own-position">Sua colocação: <strong>{{position}}º lugar</strong></p>
+          <div class="podium-grid" *ngIf="training.ranking?.length; else noRanks">
+            @for (award of podium; track award.position) {
+              <article class="podium-card" [class.podium-gold]="award.position===1">
+                <img [src]="'assets/img/octos/ranking/' + award.image" width="112" height="112" alt="">
+                <div>
+                  <h3>{{award.position}}º lugar <span>· {{award.medal}}</span></h3>
+                  @for (entry of award.participants; track entry.user_id) {
+                    <p class="podium-entry">
+                      <strong>{{entry.name}}</strong>
+                      <small>{{entry.score}} pontos · {{entry.duration_ms / 1000 | number:'1.3-3'}} s</small>
+                    </p>
+                  } @empty {
+                    <p class="muted">Posição ainda sem participante.</p>
+                  }
+                </div>
+              </article>
+            }
+          </div>
+          <ng-template #noRanks><p class="muted">Ainda não há participantes classificados.</p></ng-template>
+          <details class="ranking-details" *ngIf="training.ranking?.length">
+            <summary>Ver classificação completa</summary>
+            <p class="muted">Pontuação e tempo idênticos compartilham a mesma posição.</p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Posição</th><th>Participante</th><th>Acertos</th><th>Pontos</th><th>Tempo</th></tr></thead>
+                <tbody><tr *ngFor="let r of training.ranking"><td><span class="ranking-position"><img *ngIf="rankingImages[r.position - 1] as image" [src]="'assets/img/octos/ranking/' + image" width="44" height="44" alt="" loading="lazy">{{r.position}}º</span></td><td>{{r.name}}</td><td>{{r.correct_count}}/5</td><td>{{r.score}}</td><td>{{r.duration_ms/1000 | number:'1.3-3'}} s</td></tr></tbody>
+              </table>
+            </div>
+          </details>
+        </ng-container>
+      </section>
+    </ng-template>
   </ng-container>
 </main>

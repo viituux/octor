@@ -1,3 +1,4 @@
+import { API_BASE } from '../api-config';
 /** Sessão web: login/cadastro/Google retornam JWT e perfil; o serviço sincroniza armazenamento local e signals após a confirmação da API. */
 /**
  * Dependência ({ Injectable, signal }): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
@@ -10,7 +11,7 @@ import { HttpClient } from '@angular/common/http';
 /**
  * Dependência ({ Observable, tap }): composição dos fluxos assíncronos e conversão/observação das respostas HTTP.
  */
-import { Observable, tap } from 'rxjs';
+import { Observable, tap, finalize, shareReplay, map, of, catchError, throwError } from 'rxjs';
 
 export interface UserSettings { updated_at?: string; }
 
@@ -40,7 +41,8 @@ export class AuthService {
   /**
    * string: URL base do contrato HTTP deste serviço.
    */
-  private apiUrl = 'http://localhost:8000/api/auth';
+  readonly apiBase = API_BASE + '/';
+  private apiUrl = this.apiBase + 'auth';
   /**
    * signal de User|null: perfil compartilhado da sessão, atualizado com os dados recebidos da API.
    */
@@ -74,13 +76,7 @@ export class AuthService {
    */
   login(credentials: { username: string; password: string }): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.apiUrl}/login/`, credentials).pipe(
-      tap(res => {
-        localStorage.setItem('access_token', res.access);
-        localStorage.setItem('refresh_token', res.refresh);
-        localStorage.setItem('current_user', JSON.stringify(res.user));
-        this.token.set(res.access);
-        this.currentUser.set(res.user);
-      })
+      tap(res => this.acceptSession(res))
     );
   }
 
@@ -90,7 +86,7 @@ export class AuthService {
    * @returns Observable<AuthResponse>.
    * Falhas HTTP seguem pelo canal de erro do Observable; este método não confirma sucesso antes da resposta.
    */
-  register(userData: { username: string; first_name: string; email: string; password: string }): Observable<AuthResponse> {
+  register(userData: { username: string; first_name: string; email: string; password: string; consent_version: string }): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.apiUrl}/register/`, userData).pipe(tap(res=>this.acceptSession(res)));
   }
   /**
@@ -99,6 +95,8 @@ export class AuthService {
    * @returns void.
    */
   acceptSession(res: AuthResponse): void {
+    this.sessionEpoch++;
+    this.refreshing = undefined;
     localStorage.setItem('access_token',res.access);localStorage.setItem('refresh_token',res.refresh);
     this.saveUser(res.user);this.token.set(res.access);
   }
@@ -154,8 +152,8 @@ export class AuthService {
    * @returns Observable<AuthResponse>.
    * Falhas HTTP seguem pelo canal de erro do Observable; este método não confirma sucesso antes da resposta.
    */
-  googleLogin(credential:string,challenge:string): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(this.apiUrl+'/google/login/',{credential,challenge}).pipe(tap(res=>this.acceptSession(res)));
+  googleLogin(credential:string,challenge:string,consentVersion?:string): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(this.apiUrl+'/google/login/',{credential,challenge,consent_version:consentVersion || undefined}).pipe(tap(res=>this.acceptSession(res)));
   }
   /**
    * Associa a credencial Google à conta autenticada e sincroniza o perfil recebido.
@@ -191,12 +189,62 @@ export class AuthService {
    * Limpa os dados locais usados pela sessão e atualiza a navegação/estado previstos neste contexto.
    * @returns void.
    */
+  private refreshing?: Observable<string>;
+  private sessionEpoch = 0;
+
+  extensionSession() {
+    return this.http.post<{access: string; refresh: string}>(this.apiUrl + '/extension-session/', {});
+  }
+
+  ensureAccess(): Observable<string> {
+    if (this.isAuthenticated()) return of(this.token()!);
+    if (this.refreshing) return this.refreshing;
+    const refresh = localStorage.getItem('refresh_token');
+    if (!refresh) return throwError(() => new Error('Sessão indisponível.'));
+    const epoch = this.sessionEpoch;
+    this.refreshing = this.http.post<{access: string; refresh: string}>(this.apiUrl + '/refresh/', {refresh}).pipe(
+      map(session => {
+        if (epoch !== this.sessionEpoch) {
+          this.revoke(session.refresh);
+          throw new Error('Sessão encerrada.');
+        }
+        localStorage.setItem('access_token', session.access);
+        localStorage.setItem('refresh_token', session.refresh);
+        this.token.set(session.access);
+        return session.access;
+      }),
+      catchError(error => {
+        if (epoch === this.sessionEpoch && [400, 401, 403].includes(error.status)) {
+          const latest = localStorage.getItem('access_token');
+          // Outra aba pode ter renovado o token enquanto esta aguardava a resposta.
+          if (latest && latest !== this.token() && localStorage.getItem('refresh_token') !== refresh) {
+            this.token.set(latest);
+            if (this.isAuthenticated()) return of(latest);
+          }
+          this.logout();
+        }
+        return throwError(() => error);
+      }),
+      finalize(() => { if (epoch === this.sessionEpoch) this.refreshing = undefined; }),
+      shareReplay(1),
+    );
+    return this.refreshing;
+  }
+
+  private revoke(refresh: string) {
+    this.http.post(this.apiUrl + '/logout/', {refresh}).subscribe({error: () => {}});
+  }
+
   logout(): void {
+    const refresh = localStorage.getItem('refresh_token');
+    this.sessionEpoch++;
+    this.refreshing = undefined;
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('current_user');
     this.token.set(null);
     this.currentUser.set(null);
+    if (refresh) this.revoke(refresh);
   }
 
   /**

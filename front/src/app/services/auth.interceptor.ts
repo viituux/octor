@@ -1,28 +1,28 @@
-/** Interceptor HTTP: inclui a sessão conforme as condições atuais do serviço. Este código não adiciona filtragem por domínio de destino. */
-/**
- * Dependência ({ HttpInterceptorFn }): requisições HTTP tipadas e interceptação do acesso à API.
- */
+/** Envia a credencial de sessão apenas para a API configurada no OCTOR. */
 import { HttpInterceptorFn } from '@angular/common/http';
-/**
- * Dependência ({ inject }): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
- */
+import { switchMap } from 'rxjs';
 import { inject } from '@angular/core';
-/**
- * Dependência ({ AuthService }): contratos e comportamento compartilhados de ./auth.service.
- */
 import { AuthService } from './auth.service';
 
-export const authInterceptor: HttpInterceptorFn = /* Lê a sessão disponível, clona a requisição com Bearer quando autenticada e delega ao próximo handler. | @param req — requisição HTTP interceptada. | @param next — próximo handler HTTP ou valor do callback, conforme a assinatura. | @returns resultado de next(...). */ (req, next) => {
-  const authService = inject(AuthService);
-  const /* credencial de acesso ou signal correspondente; seu formato e uso seguem o contrato da sessão. */ token = authService.token();
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const auth = inject(AuthService);
+  const token = auth.token();
 
-  if (token && authService.isAuthenticated()) {
-    req = req.clone({
-      setHeaders: {
-        Authorization: `Bearer ${token}`
-      }
-    });
+
+  const api = new URL(auth.apiBase);
+  let destination: URL;
+  try {
+    destination = new URL(req.url, document.baseURI);
+  } catch {
+    return next(req);
+  }
+  if (destination.origin !== api.origin || !destination.pathname.startsWith(api.pathname)) {
+    return next(req);
   }
 
-  return next(req);
+  if (/^auth\/(login|register|refresh|logout|google\/(config|challenge|login))\/$/.test(destination.pathname.slice(api.pathname.length))) return next(req);
+  const authorized = (access: string) => next(req.clone({setHeaders: {Authorization: `Bearer ${access}`}}));
+  if (token && auth.isAuthenticated()) return authorized(token);
+  if (!token) return next(req);
+  return auth.ensureAccess().pipe(switchMap(authorized));
 };

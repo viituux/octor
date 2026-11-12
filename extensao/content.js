@@ -3,6 +3,11 @@
 if (globalThis.__autoGuideRecorderLoaded) return;
 globalThis.__autoGuideRecorderLoaded = true;
 chrome.runtime.onMessage.addListener(/* Recebe o evento do navegador/Chrome e delega ao fluxo registrado neste contexto. | @param message — mensagem recebida entre os contextos da extensão. | @param sender — contexto remetente da mensagem Chrome. | @param respond — valor recebido do contexto chamador. | @returns boolean. */ (message, sender, respond) => {
+  if (message.action === 'RECORDING_STATE' && sender.id === chrome.runtime.id) {
+    receivedStateUpdate = true;
+    applyRecordingState(message.state);
+    return false;
+  }
   if (message.action === 'CAPTURE_CONTEXT') {
     const target = message.capture_id ? captureTargets.get(message.capture_id) : captureTarget;
     respond(target ? captureContext(target) : null); return false;
@@ -55,17 +60,15 @@ function captureContext(target = captureTarget) {
     width: window.innerWidth, height: window.innerHeight };
 }
 
-// Sincroniza estado de gravação
-chrome.storage.local.get(["isRecording", "isPaused"], (result) => {
-  isRecording = !!result.isRecording;
-  isPaused = !!result.isPaused;
-});
+function applyRecordingState(state) {
+  isRecording = !!state?.isRecording;
+  isPaused = !!state?.isPaused;
+}
 
-chrome.storage.onChanged.addListener(/* Recebe o evento do navegador/Chrome e delega ao fluxo registrado neste contexto. | @param changes — valor recebido do contexto chamador. | @param area — valor recebido do contexto chamador. | @returns void/undefined; efeitos nas operações do corpo. */ (changes, area) => {
-  if (area === "local") {
-    if (changes.isRecording !== undefined) isRecording = changes.isRecording.newValue;
-    if (changes.isPaused !== undefined) isPaused = changes.isPaused.newValue;
-  }
+let receivedStateUpdate = false;
+chrome.runtime.sendMessage({ action: 'GET_RECORDING_STATE' }, state => {
+  if (chrome.runtime.lastError || receivedStateUpdate) return;
+  applyRecordingState(state);
 });
 
 // Gera seletor CSS legível e único
@@ -228,7 +231,6 @@ document.addEventListener(
         selector: getCssSelector(target),
         target: AutoGuideTargets.describe(target),
         element_text: getElementLabel(target),
-        input_value: target.tagName === "SELECT" ? target.options[target.selectedIndex]?.text : target.value,
         url: window.location.href,
         timestamp: Date.now(),
         viewport_width: window.innerWidth,

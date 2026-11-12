@@ -1,0 +1,42 @@
+:host { display: block; font-family: var(--font-ui, system-ui, sans-serif); }
+main { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+.print-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; margin: 0 0 16px; color: var(--text-main); }
+.print-tools button { padding: 10px 14px; background: var(--primary); color: var(--on-primary); border: 0; border-radius: 8px; font: inherit; }
+.institutional-document { background: #fff; color: #14243b; padding: clamp(16px, 5vw, 44px); overflow-wrap: anywhere; line-height: 1.5; --brand-logo-filter: none; }
+.brand-row { display: flex; gap: 12px; justify-content: space-between; align-items: center; border-top: 4px solid #245441; border-bottom: 1px solid #cfdbd5; padding: 12px 0; }
+.brand-row span { color: #245441; font-weight: 600; font-size: .8em; }
+.section-tag { margin: 18px 0 4px; font-weight: 700; color: #245441; }
+h1 { margin: 0 0 14px; line-height: 1.18; }
+h2 { margin: 12px 0 4px; font-size: 1.15em; }
+h3 { margin: 0 0 4px; color: #245441; }
+p { margin: 0 0 10px; white-space: pre-wrap; }
+.metadata { display: flex; flex-wrap: wrap; gap: 10px 20px; padding: 12px; background: #eef5f1; }
+.metadata dt { font-size: .85em; color: #375c4e; }
+.metadata dd { margin: 0; font-weight: 600; }
+.section-heading { border-top: 1px solid #cfdbd5; padding-top: 12px; margin-top: 20px; }
+.print-step { margin: 0 0 16px; padding-top: 8px; }
+figure { margin: 8px 0 0; }
+figure img { display: block; width: 100%; height: auto; max-height: 145mm; object-fit: contain; object-position: left center; }
+figcaption, .missing-capture { font-size: .85em; color: #46596d; }
+figcaption { padding-top: 4px; }
+table { border-collapse: collapse; width: 100%; font-size: .9em; }
+td, th { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid #cfdbd5; }
+td:last-child { white-space: pre-wrap; }
+th { background: #eef5f1; }
+@media (min-width: 700px) {
+  .compact-step { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.5fr); gap: 14px; align-items: start; }
+  .compact-step figure { margin-top: 0; }
+}
+@page octor-institutional { size: A4; margin: 15mm; }
+@media print {
+  :host { page: octor-institutional; }
+  main, .institutional-document { max-width: none; margin: 0; padding: 0; }
+  .print-tools { display: none !important; }
+  .institutional-document { font-size: 10.5pt; print-color-adjust: exact; }
+  h1, h2, h3 { break-after: avoid; }
+  p { orphans: 3; widows: 3; }
+  .compact-step { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.5fr); gap: 4mm; align-items: start; break-inside: avoid; }
+  .compact-step figure { margin-top: 0; }
+  figure, .metadata, tr { break-inside: avoid; }
+  thead { display: table-header-group; }
+}

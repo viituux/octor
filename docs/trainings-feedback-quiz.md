@@ -1,3 +1,5 @@
+> Atualização: novas publicações voltaram a exigir quiz. Consulte [Quiz obrigatório e ranking](QUIZ-OBRIGATORIO.md) para o contrato atual. As instruções anteriores abaixo registram a etapa sem quiz.
+
 # Treinamentos e avaliações — OCTOR
 
 ## Fluxo atual

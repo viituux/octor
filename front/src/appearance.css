@@ -1,0 +1,295 @@
+/* Aparência web: cores compartilhadas sem alterar dimensões, conteúdo ou as artes originais. */
+:root {
+  --bg-main: #f8fafc;
+  --bg-app: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-sidebar: #f1f5f9;
+  --bg-card-hover: #f1f5f9;
+  --bg-input: #ffffff;
+  --border-color: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #526176;
+  --text-soft: #526176;
+  --primary: #0369a1;
+  --primary-hover: #075985;
+  --accent: #0369a1;
+  --on-primary: #ffffff;
+  --primary-soft: #e0f2fe;
+  --focus-ring: #0284c7;
+  --danger: #b91c1c;
+  --danger-bg: #fef2f2;
+  --success: #166534;
+  --success-bg: #f0fdf4;
+  --warning: #854d0e;
+  --warning-bg: #fefce8;
+  --hero-start: #f0f9ff;
+  --hero-mid: #e0f2fe;
+  --hero-end: #f8fafc;
+  --text-hero: #0f172a;
+  --ui-166534: #166534;
+  --ui-334155: #334155;
+  --ui-475569: #475569;
+  --ui-ffffff: #ffffff;
+  --ui-f8fafc: #f8fafc;
+  --ui-f1f5f9: #f1f5f9;
+  --ui-e2e8f0: #e2e8f0;
+  --ui-cbd5e1: #cbd5e1;
+  --ui-0f172a: #0f172a;
+  --ui-102b32: #102b32;
+  --ui-64748b: #526176;
+  --ui-94a3b8: #526176;
+  --ui-0284c7: #0369a1;
+  --ui-0369a1: #0369a1;
+  --ui-075985: #075985;
+  --ui-e0f2fe: #e0f2fe;
+  --ui-f0f9ff: #f0f9ff;
+  --ui-bae6fd: #bae6fd;
+  --ui-7dd3fc: #7dd3fc;
+  --ui-a1e7e0: #a1e7e0;
+  --ui-83e1e1: #83e1e1;
+  --ui-88e4d4: #88e4d4;
+  --ui-f0fdf4: #f0fdf4;
+  --ui-bbf7d0: #bbf7d0;
+  --ui-fef2f2: #fef2f2;
+  --ui-991b1b: #991b1b;
+  --ui-b91c1c: #b91c1c;
+  --ui-fecaca: #fecaca;
+  --ui-fff7ed: #fff7ed;
+  --ui-9a3412: #9a3412;
+  --ui-fed7aa: #fed7aa;
+  --ui-ffffffed: #ffffffed;
+  --ui-fefce8: #fefce8;
+  --ui-854d0e: #854d0e;
+  --ui-fde68a: #fde68a;
+  --ui-a16207: #a16207;
+  --ui-86efac: #86efac;
+  --bg-tentacle: url('/assets/img/bg/tentaculo-light.png');
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg-main: #0b1220;
+  --bg-app: #0b1220;
+  --bg-card: #111c30;
+  --bg-surface: #111c30;
+  --bg-sidebar: #172338;
+  --bg-card-hover: #172338;
+  --bg-input: #111c30;
+  --border-color: #2b3b52;
+  --text-main: #e2e8f0;
+  --text-muted: #b0bed0;
+  --text-soft: #b0bed0;
+  --primary: #38bdf8;
+  --primary-hover: #7dd3fc;
+  --accent: #38bdf8;
+  --on-primary: #07111f;
+  --primary-soft: #0d2b43;
+  --focus-ring: #7dd3fc;
+  --danger: #fca5a5;
+  --danger-bg: #331b24;
+  --success: #86efac;
+  --success-bg: #102b20;
+  --warning: #fde68a;
+  --warning-bg: #302813;
+  --hero-start: #10263a;
+  --hero-mid: #0d2b43;
+  --hero-end: #0b1220;
+  --text-hero: #e2e8f0;
+  --ui-166534: #86efac;
+  --ui-334155: #e2e8f0;
+  --ui-475569: #cbd5e1;
+  --ui-ffffff: #111c30;
+  --ui-f8fafc: #0b1220;
+  --ui-f1f5f9: #172338;
+  --ui-e2e8f0: #2b3b52;
+  --ui-cbd5e1: #40516a;
+  --ui-0f172a: #e2e8f0;
+  --ui-102b32: #e2e8f0;
+  --ui-64748b: #b0bed0;
+  --ui-94a3b8: #b0bed0;
+  --ui-0284c7: #38bdf8;
+  --ui-0369a1: #7dd3fc;
+  --ui-075985: #bae6fd;
+  --ui-e0f2fe: #0d2b43;
+  --ui-f0f9ff: #10263a;
+  --ui-bae6fd: #285774;
+  --ui-7dd3fc: #38bdf8;
+  --ui-a1e7e0: #67e8f9;
+  --ui-83e1e1: #67e8f9;
+  --ui-88e4d4: #67e8f9;
+  --ui-f0fdf4: #102b20;
+  --ui-bbf7d0: #245439;
+  --ui-fef2f2: #331b24;
+  --ui-991b1b: #fca5a5;
+  --ui-b91c1c: #fca5a5;
+  --ui-fecaca: #6e2d3c;
+  --ui-fff7ed: #302016;
+  --ui-9a3412: #fdba74;
+  --ui-fed7aa: #74401f;
+  --ui-ffffffed: #111c30ed;
+  --ui-fefce8: #302813;
+  --ui-854d0e: #fde68a;
+  --ui-fde68a: #78591c;
+  --ui-a16207: #facc15;
+  --ui-86efac: #86efac;
+  --bg-tentacle: url('/assets/img/bg/tentaculo-dark.png');
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+ :root:not([data-theme="light"]):not([data-theme="dark"]) {
+  --bg-main: #0b1220;
+  --bg-app: #0b1220;
+  --bg-card: #111c30;
+  --bg-surface: #111c30;
+  --bg-sidebar: #172338;
+  --bg-card-hover: #172338;
+  --bg-input: #111c30;
+  --border-color: #2b3b52;
+  --text-main: #e2e8f0;
+  --text-muted: #b0bed0;
+  --text-soft: #b0bed0;
+  --primary: #38bdf8;
+  --primary-hover: #7dd3fc;
+  --accent: #38bdf8;
+  --on-primary: #07111f;
+  --primary-soft: #0d2b43;
+  --focus-ring: #7dd3fc;
+  --danger: #fca5a5;
+  --danger-bg: #331b24;
+  --success: #86efac;
+  --success-bg: #102b20;
+  --warning: #fde68a;
+  --warning-bg: #302813;
+  --hero-start: #10263a;
+  --hero-mid: #0d2b43;
+  --hero-end: #0b1220;
+  --text-hero: #e2e8f0;
+  --ui-166534: #86efac;
+  --ui-334155: #e2e8f0;
+  --ui-475569: #cbd5e1;
+  --ui-ffffff: #111c30;
+  --ui-f8fafc: #0b1220;
+  --ui-f1f5f9: #172338;
+  --ui-e2e8f0: #2b3b52;
+  --ui-cbd5e1: #40516a;
+  --ui-0f172a: #e2e8f0;
+  --ui-102b32: #e2e8f0;
+  --ui-64748b: #b0bed0;
+  --ui-94a3b8: #b0bed0;
+  --ui-0284c7: #38bdf8;
+  --ui-0369a1: #7dd3fc;
+  --ui-075985: #bae6fd;
+  --ui-e0f2fe: #0d2b43;
+  --ui-f0f9ff: #10263a;
+  --ui-bae6fd: #285774;
+  --ui-7dd3fc: #38bdf8;
+  --ui-a1e7e0: #67e8f9;
+  --ui-83e1e1: #67e8f9;
+  --ui-88e4d4: #67e8f9;
+  --ui-f0fdf4: #102b20;
+  --ui-bbf7d0: #245439;
+  --ui-fef2f2: #331b24;
+  --ui-991b1b: #fca5a5;
+  --ui-b91c1c: #fca5a5;
+  --ui-fecaca: #6e2d3c;
+  --ui-fff7ed: #302016;
+  --ui-9a3412: #fdba74;
+  --ui-fed7aa: #74401f;
+  --ui-ffffffed: #111c30ed;
+  --ui-fefce8: #302813;
+  --ui-854d0e: #fde68a;
+  --ui-fde68a: #78591c;
+  --ui-a16207: #facc15;
+  --ui-86efac: #86efac;
+  --bg-tentacle: url('/assets/img/bg/tentaculo-dark.png');
+  color-scheme: dark;
+ }
+}
+/* O app-root isola o z-index negativo do fundo da pilha da página. */
+.bg-tentacle { position: fixed; inset: 0; z-index: -1; pointer-events: none; background-image: var(--bg-tentacle); background-repeat: no-repeat; background-position: right -8% center; background-size: min(95vw, 1500px) auto; opacity: .10; }
+/* Só as superfícies de página ficam transparentes; cartões, campos e diálogos preservam legibilidade. */
+@media screen {
+ app-root > :not(.bg-tentacle):not(app-release):not(app-dialog):not(router-outlet),
+ .library, .auth-shell, .form-area, .account-shell, .editor-shell, .paper { background: transparent !important; }
+}
+@media (max-width: 768px) {
+ .bg-tentacle { background-size: 160vw auto; background-position: right -40% bottom 10%; opacity: .08; }
+}
+@media print {
+ .bg-tentacle { display: none !important; }
+ :root {
+  --bg-main: #f8fafc !important;
+  --bg-app: #f8fafc !important;
+  --bg-card: #ffffff !important;
+  --bg-surface: #ffffff !important;
+  --bg-sidebar: #f1f5f9 !important;
+  --bg-card-hover: #f1f5f9 !important;
+  --bg-input: #ffffff !important;
+  --border-color: #e2e8f0 !important;
+  --text-main: #253448 !important;
+  --text-muted: #566576 !important;
+  --text-soft: #6b7c8d !important;
+  --primary: #25658d !important;
+  --primary-hover: #075985 !important;
+  --accent: #0369a1 !important;
+  --on-primary: #ffffff !important;
+  --primary-soft: #e0f2fe !important;
+  --focus-ring: #0284c7 !important;
+  --danger: #b91c1c !important;
+  --danger-bg: #fef2f2 !important;
+  --success: #166534 !important;
+  --success-bg: #f0fdf4 !important;
+  --warning: #854d0e !important;
+  --warning-bg: #fefce8 !important;
+  --hero-start: #f0f9ff !important;
+  --hero-mid: #e0f2fe !important;
+  --hero-end: #f8fafc !important;
+  --text-hero: #0f172a !important;
+  --ui-166534: #166534 !important;
+  --ui-334155: #334155 !important;
+  --ui-475569: #475569 !important;
+  --ui-ffffff: #ffffff !important;
+  --ui-f8fafc: #f8fafc !important;
+  --ui-f1f5f9: #f1f5f9 !important;
+  --ui-e2e8f0: #e2e8f0 !important;
+  --ui-cbd5e1: #cbd5e1 !important;
+  --ui-0f172a: #0f172a !important;
+  --ui-102b32: #102b32 !important;
+  --ui-64748b: #526176 !important;
+  --ui-94a3b8: #526176 !important;
+  --ui-0284c7: #0369a1 !important;
+  --ui-0369a1: #0369a1 !important;
+  --ui-075985: #075985 !important;
+  --ui-e0f2fe: #e0f2fe !important;
+  --ui-f0f9ff: #f0f9ff !important;
+  --ui-bae6fd: #bae6fd !important;
+  --ui-7dd3fc: #7dd3fc !important;
+  --ui-a1e7e0: #a1e7e0 !important;
+  --ui-83e1e1: #83e1e1 !important;
+  --ui-88e4d4: #88e4d4 !important;
+  --ui-f0fdf4: #f0fdf4 !important;
+  --ui-bbf7d0: #bbf7d0 !important;
+  --ui-fef2f2: #fef2f2 !important;
+  --ui-991b1b: #991b1b !important;
+  --ui-b91c1c: #b91c1c !important;
+  --ui-fecaca: #fecaca !important;
+  --ui-fff7ed: #fff7ed !important;
+  --ui-9a3412: #9a3412 !important;
+  --ui-fed7aa: #fed7aa !important;
+  --ui-ffffffed: #ffffffed !important;
+  --ui-fefce8: #fefce8 !important;
+  --ui-854d0e: #854d0e !important;
+  --ui-fde68a: #fde68a !important;
+  --ui-a16207: #a16207 !important;
+  --ui-86efac: #86efac !important;
+ color-scheme: light !important;
+ }
+}
+
+/* A mesma arte recebe contraste adequado ao tema, sem trocar sua geometria. */
+:root { --brand-logo-filter: none; }
+:root[data-theme="dark"] { --brand-logo-filter: invert(1); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --brand-logo-filter: invert(1); }
+}
+@media print { :root { --brand-logo-filter: none !important; } }

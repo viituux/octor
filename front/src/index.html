@@ -7,7 +7,31 @@
   <title>OCTOR - Criador e Editor de Guias</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <meta name="color-scheme" content="light dark">
+  <script>
+    // Sincroniza as cores nativas antes do primeiro desenho; o CSS segue o sistema.
+    // data-theme="light|dark", quando definido, tem prioridade sobre a preferência do SO.
+    (() => {
+      const root = document.documentElement;
+      // Recupera apenas valores conhecidos antes de carregar a aplicação, sem flash de tema.
+      try {
+        const saved = localStorage.getItem('octor_theme');
+        if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
+      } catch { /* Usa a preferência do sistema quando o armazenamento não está disponível. */ }
+      const media = window.matchMedia('(prefers-color-scheme: dark)');
+      const apply = () => {
+        const explicit = root.getAttribute('data-theme');
+        root.style.colorScheme = explicit === 'light' || explicit === 'dark'
+          ? explicit : media.matches ? 'dark' : 'light';
+      };
+      apply();
+      media.addEventListener('change', apply);
+      new MutationObserver(apply).observe(root, {attributes: true, attributeFilter: ['data-theme']});
+    })();
+  </script>
+  <link rel="preload" as="image" href="/assets/img/bg/tentaculo-light.png">
+  <link rel="preload" as="image" href="/assets/img/bg/tentaculo-dark.png">
+  <link rel="icon" type="image/jpeg" href="assets/img/brand/octor-favicon.jpg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">

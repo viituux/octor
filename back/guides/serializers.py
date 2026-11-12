@@ -1,6 +1,10 @@
 # Valida e representa guias/passos, incluindo capturas, anotações e áudio; URLs são produzidas no contexto da requisição.
 # Dependência: codificação de mídia binária no formato aceito pelo provedor.
 import base64
+import binascii
+import io
+
+from PIL import Image
 # Dependência: identificadores para arquivos e recursos sem depender do nome enviado.
 import uuid
 # Dependência: exceções, validações, cache ou utilitários de comandos do Django.
@@ -11,6 +15,15 @@ from django.db import transaction
 from rest_framework import serializers
 # Dependência: contratos e funções do módulo .models reutilizados neste fluxo.
 from .models import Workspace, Guide, Step
+from .media import guide_media_url
+
+
+MAX_CAPTURE_BYTES = 12 * 1024 * 1024
+MAX_CAPTURE_PIXELS = 40_000_000
+CAPTURE_FORMATS = {
+    'PNG': ('data:image/png;base64', 'png'),
+    'JPEG': ('data:image/jpeg;base64', 'jpg'),
+}
 
 
 class StepSerializer(serializers.ModelSerializer):
@@ -67,11 +80,12 @@ class StepSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "screenshot_url", "narration_url", "live_narration_url"]
         extra_kwargs = {
             "guide": {"required": False},
-            "screenshot": {"required": False, "allow_null": True},
+            "screenshot": {"required": False, "allow_null": True, "write_only": True},
+            "narration": {"write_only": True},
             "selector": {"required": False, "allow_blank": True},
             "url": {"required": False, "allow_blank": True},
             "element_text": {"required": False, "allow_blank": True},
-            "input_value": {"required": False, "allow_blank": True},
+            "input_value": {"required": False, "allow_blank": True, "write_only": True},
             "action_type": {"required": False, "allow_blank": True},
             "text": {"required": False, "allow_blank": True},
             "click_x": {"required": False, "allow_null": True},
@@ -82,6 +96,10 @@ class StepSerializer(serializers.ModelSerializer):
     # Parâmetros — value: valor do campo em validação.
     # Retorno: value.
     # Falhas explícitas no fluxo: serializers.ValidationError. Consulte os blocos try/except para as conversões locais.
+    def validate_input_value(self, value):
+        """Aceita o contrato da extensão antiga sem persistir o conteúdo digitado."""
+        return ""
+
     def validate_guide(self, value):
         request = self.context.get("request")
         if request and value.owner_id != request.user.id:
@@ -107,18 +125,13 @@ class StepSerializer(serializers.ModelSerializer):
     def get_live_narration_url(self, obj):
         if not obj.guide.capture_audio or not any(isinstance(item, dict) and item.get("type") == "live_narration" for item in obj.annotations):
             return None
-        request = self.context.get("request")
-        url = obj.guide.capture_audio.url
-        return request.build_absolute_uri(url) if request else url
+        return guide_media_url(obj.guide.capture_audio, self.context.get("request"))
 
     # Calcula o campo `narration_url` de StepSerializer usando o objeto e o contexto disponíveis.
     # Parâmetros — obj: registro que está sendo serializado.
     # Retorno: None; resultado de request.build_absolute_uri(...) ou obj.narration.url.
     def get_narration_url(self, obj):
-        if not obj.narration:
-            return None
-        request = self.context.get("request")
-        return request.build_absolute_uri(obj.narration.url) if request else obj.narration.url
+        return guide_media_url(obj.narration, self.context.get("request"))
 
     # Valida o campo `narration` antes de aceitá-lo no contrato de entrada de StepSerializer.
     # Parâmetros — value: valor do campo em validação.
@@ -132,10 +145,12 @@ class StepSerializer(serializers.ModelSerializer):
         header = value.read(16)
         value.seek(0)
         formats = {"webm": header.startswith(b"\x1aE\xdf\xa3"), "ogg": header.startswith(b"OggS"),
-                   "m4a": len(header) >= 8 and header[4:8] == b"ftyp"}
+                   "m4a": len(header) >= 8 and header[4:8] == b"ftyp",
+                   "wav": header.startswith(b"RIFF") and header[8:12] == b"WAVE",
+                   "mp3": header.startswith(b"ID3") or (len(header) >= 2 and header[0] == 255 and header[1] & 224 == 224)}
         extension = next((ext for ext, valid in formats.items() if valid), None)
         if not extension:
-            raise serializers.ValidationError("Formato de áudio inválido. Use uma gravação WebM, Ogg ou MP4.")
+            raise serializers.ValidationError("Formato de áudio inválido. Use um áudio WebM, Ogg, MP4, MP3 ou WAV.")
         value.name = f"narration_{uuid.uuid4().hex}.{extension}"
         return value
 
@@ -143,33 +158,37 @@ class StepSerializer(serializers.ModelSerializer):
     # Parâmetros — obj: registro que está sendo serializado.
     # Retorno: resultado de request.build_absolute_uri(...); obj.screenshot.url; None.
     def get_screenshot_url(self, obj):
-        if obj.screenshot:
-            request = self.context.get("request")
-            if request:
-                return request.build_absolute_uri(obj.screenshot.url)
-            return obj.screenshot.url
-        return None
+        return guide_media_url(obj.screenshot, self.context.get("request"))
 
-    # Cria o recurso de StepSerializer usando os dados e vínculos definidos neste fluxo.
-    # Parâmetros — validated_data: dicionário após a validação do serializer.
-    # Retorno: resultado de super().create(...).
-    def create(self, validated_data):
-        screenshot_base64 = validated_data.pop("screenshot_base64", None)
-        if screenshot_base64 and not validated_data.get("screenshot"):
-            try:
-                format_prefix, imgstr = (
-                    screenshot_base64.split(";base64,")
-                    if ";base64," in screenshot_base64
-                    else ("image/png", screenshot_base64)
-                )
-                ext = "png" if "png" in format_prefix else "jpg"
-                file_name = f"step_{uuid.uuid4().hex[:8]}.{ext}"
-                data = ContentFile(base64.b64decode(imgstr), name=file_name)
-                validated_data["screenshot"] = data
-            except Exception as e:
-                print("Erro ao decodificar screenshot base64:", e)
+    def validate(self, attrs):
+        """Valida a captura Base64 antes de qualquer gravação do lote."""
+        encoded = attrs.pop('screenshot_base64', None)
+        if not encoded or attrs.get('screenshot'):
+            return attrs
 
-        return super().create(validated_data)
+        prefix, separator, payload = encoded.partition(',')
+        if not separator:
+            prefix, payload = None, encoded
+        try:
+            if len(payload) > ((MAX_CAPTURE_BYTES + 2) // 3) * 4:
+                raise ValueError('Captura acima do limite.')
+            raw = base64.b64decode(payload, validate=True)
+            if len(raw) > MAX_CAPTURE_BYTES:
+                raise ValueError('Captura acima do limite.')
+            with Image.open(io.BytesIO(raw)) as image:
+                expected_prefix, extension = CAPTURE_FORMATS[image.format]
+                if prefix is not None and prefix != expected_prefix:
+                    raise ValueError('Tipo declarado incompatível.')
+                if image.width * image.height > MAX_CAPTURE_PIXELS:
+                    raise ValueError('Dimensões acima do limite.')
+                image.load()
+        except (binascii.Error, KeyError, OSError, ValueError, Image.DecompressionBombError):
+            raise serializers.ValidationError({
+                'screenshot_base64': 'Envie uma captura PNG ou JPEG válida, de até 12 MB e 40 megapixels.'
+            }) from None
+
+        attrs['screenshot'] = ContentFile(raw, name=f'step_{uuid.uuid4().hex}.{extension}')
+        return attrs
 
 
 class GuideAccessMixin:
@@ -228,10 +247,7 @@ class GuideDetailSerializer(GuideAccessMixin, serializers.ModelSerializer):
     # Parâmetros — obj: registro que está sendo serializado.
     # Retorno: None; resultado de request.build_absolute_uri(...) ou obj.capture_audio.url.
     def get_capture_audio_url(self, obj):
-        if not obj.capture_audio:
-            return None
-        request = self.context.get("request")
-        return request.build_absolute_uri(obj.capture_audio.url) if request else obj.capture_audio.url
+        return guide_media_url(obj.capture_audio, self.context.get("request"))
 
     # Valida o campo `capture_audio` antes de aceitá-lo no contrato de entrada de GuideDetailSerializer.
     # Parâmetros — value: valor do campo em validação.
@@ -276,6 +292,7 @@ class GuideDetailSerializer(GuideAccessMixin, serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "owner", "trashed_at", "created_at", "updated_at", "capture_audio_url"]
+        extra_kwargs = {"capture_audio": {"write_only": True}}
 
 
 class GuideListSerializer(GuideAccessMixin, serializers.ModelSerializer):
@@ -310,11 +327,8 @@ class GuideListSerializer(GuideAccessMixin, serializers.ModelSerializer):
     # Retorno: resultado de request.build_absolute_uri(...); first_step.screenshot.url; None.
     def get_first_step_screenshot(self, obj):
         first_step = obj.steps.first()
-        if first_step and first_step.screenshot:
-            request = self.context.get("request")
-            if request:
-                return request.build_absolute_uri(first_step.screenshot.url)
-            return first_step.screenshot.url
+        if first_step:
+            return guide_media_url(first_step.screenshot, self.context.get("request"))
         return None
 
 

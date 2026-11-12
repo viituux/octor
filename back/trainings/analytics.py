@@ -3,9 +3,11 @@ from collections import defaultdict
 from django.utils import timezone
 from rest_framework import serializers
 from .models import Participation, Feedback
+from .quiz import ranking
 
 
 class Filters(serializers.Serializer):
+    min_score=serializers.IntegerField(min_value=0,max_value=100,required=False)
     start = serializers.DateField(required=False)
     end = serializers.DateField(required=False)
     rating = serializers.IntegerField(min_value=1, max_value=5, required=False)
@@ -45,16 +47,22 @@ def analytics(trainings, params):
     completed = list(filtered(Participation.objects.filter(
         training_id__in=ids, completed_at__isnull=False), 'completed_at', filters))
     rows = []
+    rankings=[]
     for training in training_list:
         participants = [p for p in parts if p.training_id == training.id]
         evaluations = [f for f in feedbacks if f.training_id == training.id]
         completions = [p for p in completed if p.training_id == training.id]
+        scores=ranking(training,training.current_version,filters)
+        for version in training.versions.filter(requires_quiz=True).order_by('-number'):
+            rankings.append({'training_id':training.id,'title':training.title,'version':version.number,'rows':ranking(training,version,filters)})
         rows.append({
             'id': training.id, 'title': training.title, 'status': training.status,
             'participants': len(participants), 'evaluations': len(evaluations),
             'average_stars': round(sum(f.stars for f in evaluations) / len(evaluations), 2) if evaluations else None,
             'completions': len(completions),
             'completion_rate': round(100 * len(completions) / len(participants), 1) if participants else 0,
+            'average_score':round(sum(r['score'] for r in scores)/len(scores),1) if scores else None,
+            'quiz_submissions':len(scores),
         })
     months = defaultdict(lambda: {'completions': 0, 'stars': []})
     for part in completed:
@@ -75,6 +83,11 @@ def analytics(trainings, params):
         'average_stars': round(sum(value['stars']) / len(value['stars']), 2) if value['stars'] else None,
     } for key, value in sorted(months.items())]
     return {
+        'quiz_rankings':rankings,
+        'quiz_metrics':{
+            'submissions':sum(len(group['rows']) for group in rankings),
+            'average_score':round(sum(r['score'] for group in rankings for r in group['rows'])/sum(len(group['rows']) for group in rankings),1) if any(group['rows'] for group in rankings) else None,
+        },
         'trainings': rows,
         'metrics': {
             'completed': len(completed),

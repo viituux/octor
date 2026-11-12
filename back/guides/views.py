@@ -1,3 +1,4 @@
+from accounts.notifications import notify
 # Biblioteca e edição de procedimentos: consultas respeitam o escopo de acesso; ações distinguem lixeira, restauração e exclusão definitiva.
 # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
 from rest_framework import viewsets, permissions, status
@@ -112,7 +113,11 @@ class GuideViewSet(viewsets.ModelViewSet):
             user = User.objects.filter(email__iexact=email, is_active=True).first() if email else None
             if not user or user.id == request.user.id:
                 return Response({'detail':'Informe o e-mail de outra pessoa cadastrada no OCTOR.'}, status=400)
-            GuideShare.objects.get_or_create(guide=guide, user=user)
+            with transaction.atomic():
+                _, created = GuideShare.objects.get_or_create(guide=guide, user=user)
+                if created:
+                    notify(user,'guide_shared','Um guia foi compartilhado com você',
+                           f'{request.user.username} compartilhou o guia {guide.title}.',f'/guides/{guide.id}')
         elif request.method == 'DELETE':
             # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
             from rest_framework import serializers
@@ -155,6 +160,8 @@ class GuideViewSet(viewsets.ModelViewSet):
 
         if not steps_data:
             return Response({"error": "Envie pelo menos um passo."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(steps_data) > 1000:
+            return Response({"error": "Envie até 1.000 passos por lote."}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             Guide.objects.select_for_update().get(pk=guide.pk)

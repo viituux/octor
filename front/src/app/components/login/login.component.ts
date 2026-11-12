@@ -1,3 +1,4 @@
+import {OctorLogoComponent} from '../shared/octor-logo.component';
 /** Módulo front/src/app/components/login/login.component.ts: reúne os contratos e o comportamento local da tela/serviço; chamadas externas seguem as interfaces importadas abaixo. */
 /**
  * Dependência ({ Component, OnDestroy }): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
@@ -10,7 +11,7 @@ import { CommonModule } from '@angular/common';
 /**
  * Dependência ({ FormsModule }): vínculo e validação dos formulários da interface.
  */
-import { FormsModule } from '@angular/forms';
+import { FormsModule, NgForm } from '@angular/forms';
 /**
  * Dependência ({ Router, ActivatedRoute, RouterModule }): rotas, parâmetros e navegação entre as telas.
  */
@@ -27,9 +28,11 @@ import { AuthService } from '../../services/auth.service';
  * Dependência ({ GoogleSignInComponent }): contratos e comportamento compartilhados de ./google-sign-in.component.
  */
 import { GoogleSignInComponent } from './google-sign-in.component';
-@Component({selector:'app-login',standalone:true,imports:[CommonModule,FormsModule,RouterModule,GoogleSignInComponent],templateUrl:'./login.component.html',styleUrls:['./login.component.css']})
+import { TrainingConsentComponent } from '../shared/training-consent.component';
+@Component({selector:'app-login',standalone:true,imports:[OctorLogoComponent,CommonModule,FormsModule,RouterModule,GoogleSignInComponent,TrainingConsentComponent],templateUrl:'./login.component.html',styleUrls:['./login.component.css']})
 export class LoginComponent implements OnDestroy {
  username='';password='';confirmation='';firstName='';email='';isRegistering=false;/* boolean: diferencia carga inicial, estado vazio e conteúdo já recebido. */ loading=false;errorMessage='';showPassword=false;
+ consentVersion = '';
  private routeSubscription:Subscription;
  /**
   * Recebe as dependências e prepara o estado inicial da instância conforme o ciclo de injeção Angular.
@@ -39,7 +42,7 @@ export class LoginComponent implements OnDestroy {
   * @returns void/undefined; efeitos nas operações do corpo.
   */
  constructor(private auth:AuthService,private router:Router,public route:ActivatedRoute){
-  this.routeSubscription=route.data.subscribe(data=>{this.isRegistering=data['register']===true;this.errorMessage='';this.password='';this.confirmation='';});
+  this.routeSubscription=route.data.subscribe(data=>{this.isRegistering=data['register']===true;this.errorMessage='';this.password='';this.confirmation='';this.consentVersion='';});
   if(auth.isAuthenticated())this.finish();
  }
  /**
@@ -51,12 +54,24 @@ export class LoginComponent implements OnDestroy {
   * Valida o formulário local e encaminha a operação de login/cadastro ao serviço.
   * @returns void.
   */
- onSubmit():void{
+ onSubmit(form:NgForm):void{
   if(this.loading)return;
   this.errorMessage='';
+  form.form.markAllAsTouched();
+  const errors:string[]=[];
+  if(!this.username.trim())errors.push('Informe o nome de usuário.');
+  if(this.isRegistering && !this.firstName.trim())errors.push('Informe seu nome.');
+  if(this.isRegistering && !this.email.trim())errors.push('Informe seu e-mail.');
+  else if(this.isRegistering && form.controls['email']?.invalid)errors.push('Informe um e-mail válido.');
+  if(!this.password)errors.push('Informe sua senha.');
+  else if(this.isRegistering && this.password.length<8)errors.push('A senha precisa ter pelo menos 8 caracteres.');
+  if(this.isRegistering && !this.confirmation)errors.push('Confirme sua senha.');
+  if(this.isRegistering && !this.consentVersion)errors.push('Leia e aceite o termo sobre dados do treinamento.');
+  if(errors.length){this.errorMessage=errors.join(' ');return;}
+  if(form.invalid){this.errorMessage='Revise os campos do formulário antes de continuar.';return;}
   if(this.isRegistering && this.password!==this.confirmation){this.errorMessage='As senhas não coincidem.';return;}
   this.loading=true;
-  const operation=this.isRegistering?this.auth.register({username:this.username.trim(),first_name:this.firstName.trim(),email:this.email.trim(),password:this.password}):this.auth.login({username:this.username.trim(),password:this.password});
+  const operation=this.isRegistering?this.auth.register({username:this.username.trim(),first_name:this.firstName.trim(),email:this.email.trim(),password:this.password,consent_version:this.consentVersion}):this.auth.login({username:this.username.trim(),password:this.password});
   operation.subscribe({next:/* Aplica a resposta assíncrona ao estado desta operação no contexto do componente. | @returns void/undefined; efeitos nas operações do corpo. */ ()=>{this.loading=false;this.finish();},error:/* Trata a falha assíncrona e mantém a mensagem/estado funcional desta operação. | @param error — falha recebida da operação. | @returns void/undefined; efeitos nas operações do corpo. */ error=>{
    this.loading=false;
    const body=error.error;

@@ -29,6 +29,8 @@ class CustomLoginView(TokenObtainPairView):
 
 
 class RegisterView(generics.CreateAPIView):
+    # Cadastro é público: um token antigo do navegador não deve bloquear uma nova conta.
+    authentication_classes = []
     throttle_classes = [ScopedRateThrottle]
     # str: nome do limite de requisições definido nas configurações.
     throttle_scope = "auth"

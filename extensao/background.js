@@ -1,3 +1,5 @@
+import './environment.js';
+import {installManualCapture} from './manual-background.js';
 /** Worker da extensão: coordena estado, fila de capturas e envio autenticado. Imagens precisam corresponder à cena da ação; falhas de envio preservam a gravação. */
 /**
  * Dependência (efeitos de inicialização): contratos e comportamento compartilhados de ./playback-background.js.
@@ -20,9 +22,36 @@ function configureSidePanel() {
 }
 configureSidePanel();
 
-const /* string: endereço inicial da API usada pela extensão; não é o endereço do site capturado. */ DEFAULT_API_BASE = "http://localhost:8000/api";
+// Scripts de página recebem apenas o estado necessário. A sessão permanece no contexto da extensão.
+const storageReady = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+storageReady.catch(error => console.error('Não foi possível proteger o armazenamento do OCTOR.', error));
+const recordingKeys = ['isRecording', 'isPaused'];
+let recordingNotifications = Promise.resolve();
+
+async function recordingState() {
+  const state = await chrome.storage.local.get(recordingKeys);
+  return { isRecording: !!state.isRecording, isPaused: !!state.isPaused };
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (recordingKeys.some(key => key in changes)) {
+    recordingNotifications = recordingNotifications.then(async () => {
+      const tabs = await chrome.tabs.query({});
+      const state = await recordingState();
+      await Promise.allSettled(tabs.filter(tab => tab.id != null).map(tab =>
+        chrome.tabs.sendMessage(tab.id, { action: 'RECORDING_STATE', state })));
+    }).catch(console.error);
+  }
+  if (changes.playback) {
+    const tabId = (changes.playback.newValue || changes.playback.oldValue)?.tabId;
+    if (tabId != null) void chrome.tabs.sendMessage(tabId, { action: 'PLAYBACK_STATE_CHANGED' }).catch(() => {});
+  }
+});
+
+const /* string: endereço inicial da API usada pela extensão; não é o endereço do site capturado. */ DEFAULT_API_BASE = (globalThis.OctorEnvironment?.apiBase ?? "http://localhost:8000/api");
 // string: endereço web usado para abrir o editor após confirmar o envio do guia.
-const DEFAULT_FRONTEND_BASE = "http://localhost:4200";
+const DEFAULT_FRONTEND_BASE = (globalThis.OctorEnvironment?.frontendOrigin ?? "http://localhost:4200");
 
 // A fila serializa mudanças de estado para que cliques rápidos não sobrescrevam passos anteriores.
 // Promise: a rejeição é consumida no encadeamento para que uma falha não bloqueie os próximos eventos.
@@ -75,7 +104,19 @@ const /* string: mensagem funcional quando não há sessão utilizável para con
  * @returns session.access.
  * @throws Error nos ramos que rejeitam a operação; blocos catch mantêm o tratamento existente.
  */
-async function refreshAccessToken(apiBase) {
+let pendingRefresh;
+
+// Compartilha a renovação entre chamadas concorrentes porque o refresh é rotacionado.
+function refreshAccessToken(apiBase) {
+  if (!pendingRefresh) {
+    pendingRefresh = renewAccessToken(apiBase).finally(() => { pendingRefresh = undefined; });
+  }
+  return pendingRefresh;
+}
+
+// Troca o refresh pelo par atual e preserva a gravação em falhas temporárias.
+async function renewAccessToken(apiBase) {
+  await storageReady;
   const { refreshToken } = await chrome.storage.local.get('refreshToken');
   if (!refreshToken) {
     await chrome.storage.local.remove('authToken');
@@ -99,6 +140,16 @@ async function refreshAccessToken(apiBase) {
   if (typeof session.access !== 'string' || !session.access.trim()) throw new Error('O servidor não confirmou a renovação da sessão. A gravação foi preservada.');
   const update = {authToken:session.access};
   if (typeof session.refresh === 'string' && session.refresh.trim()) update.refreshToken=session.refresh;
+  const current = await chrome.storage.local.get('refreshToken');
+  if (current.refreshToken !== refreshToken) {
+    if (update.refreshToken) {
+      await fetch(apiBase + '/auth/logout/', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({refresh: update.refreshToken}),
+      }).catch(() => {});
+    }
+    throw new Error(SESSION_EXPIRED);
+  }
   await chrome.storage.local.set(update);
   return session.access;
 }
@@ -111,6 +162,7 @@ async function refreshAccessToken(apiBase) {
  * @throws Error nos ramos que rejeitam a operação; blocos catch mantêm o tratamento existente.
  */
 async function recordingApiFetch(apiBase, path, options) {
+  await storageReady;
   let { authToken } = await chrome.storage.local.get('authToken');
   if (!authToken) authToken = await refreshAccessToken(apiBase);
   const request = /* Executa a chamada HTTP com o Bearer fornecido para permitir a repetição após renovar a sessão. | @param token — credencial de acesso usada no cabeçalho Bearer. | @returns resultado de fetch(...). */ token => fetch(apiBase + path, {...options, headers:{...options.headers, Authorization:'Bearer ' + token}});
@@ -195,11 +247,24 @@ chrome.runtime.onInstalled.addListener(/* Recebe o evento do navegador/Chrome e 
 });
 
 chrome.runtime.onMessage.addListener(/* Recebe o evento do navegador/Chrome e delega ao fluxo registrado neste contexto. | @param message — mensagem recebida entre os contextos da extensão. | @param sender — contexto remetente da mensagem Chrome. | @param sendResponse — callback Chrome para confirmar a mensagem mantendo o canal aberto quando necessário. | @returns boolean. */ (message, sender, sendResponse) => {
+  if (message.action === 'REFRESH_PLAYBACK_AUDIO_SESSION') {
+    if (sender.url !== chrome.runtime.getURL('popup.html')) return false;
+    refreshAccessToken(DEFAULT_API_BASE).then(
+      () => sendResponse({success: true}),
+      () => sendResponse({success: false}),
+    );
+    return true;
+  }
+  if (message.action === 'GET_RECORDING_STATE') {
+    recordingState().then(sendResponse, () => sendResponse({ isRecording: false, isPaused: false }));
+    return true;
+  }
   const operations = {
     PREPARE_CAPTURE: /* Encaminha o contexto do evento para preparar a captura da cena original. | @returns resultado de prepareCapture(...). */ () => prepareCapture(message.eventData, sender),
     ACTION_PERFORMED: /* Encaminha a ação confirmada para sua associação à captura e ao passo. | @returns resultado de handleCapturedAction(...). */ () => handleCapturedAction(message.eventData, sender),
     START_RECORDING: /* Valida o estado anterior e inicia a nova sessão de gravação. | @returns objeto com status. | @throws Error nos ramos que rejeitam a operação; blocos catch mantêm o tratamento existente. */ async () => {
       if (message.voice && sender.url?.split('?')[0] !== chrome.runtime.getURL('live-recorder.html')) throw new Error('Inicie o microfone pela extensão.');
+      if((await chrome.storage.local.get('manualCapture')).manualCapture?.active)throw new Error('Interrompa a coleta do manual antes de gravar.');
       await startRecording(message.title, message.voice ? { ...message.voice, tabId: sender.tab?.id, targetTabId: message.targetTabId } : null); return { status: 'started' }; },
     PAUSE_RECORDING: /* Atualiza a pausa e confirma o estado ao remetente. | @returns objeto com status. */ async () => { await pauseRecording(message.pause); return { status: 'paused_updated' }; },
     FINISH_RECORDING: /* Solicita a finalização preservando a escolha de enviar ou ignorar o áudio pendente. | @returns resultado de finishRecording(...). */ () => finishRecording(!!message.skipAudio),
@@ -251,7 +316,6 @@ async function handleCapturedAction(eventData, sender) {
       click_x: eventData.click_x,
       click_y: eventData.click_y,
       url: eventData.url || "",
-      input_value: eventData.input_value || "",
       annotations: [{ type: 'capture_metadata', viewport_width: eventData.viewport_width,
         viewport_height: eventData.viewport_height, device_pixel_ratio: eventData.device_pixel_ratio, target: eventData.target,
         voice_offset: state.liveVoice ? liveOffset(state.liveVoice.clock, eventData.timestamp || Date.now()) : null,
@@ -356,6 +420,7 @@ async function pauseRecording(pause) {
  * @throws Error, exceção do fluxo nos ramos que rejeitam a operação; blocos catch mantêm o tratamento existente.
  */
 async function finishRecording(skipAudio = false) {
+  await storageReady;
   if (skipAudio) {
     const { liveVoice } = await chrome.storage.local.get('liveVoice');
     if (liveVoice) await voiceCommand(liveVoice, 'abort').catch(() => {});
@@ -372,7 +437,7 @@ async function finishRecording(skipAudio = false) {
     "liveVoice",
   ]);
 
-  const /* string: prefixo dos endpoints do módulo no servidor local. */ apiBase = data.apiBase || DEFAULT_API_BASE;
+  const apiBase = DEFAULT_API_BASE;
   const steps = data.recordedSteps || [];
 
   if (steps.length === 0) {
@@ -426,7 +491,8 @@ async function finishRecording(skipAudio = false) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ steps }),
+      // Gravações iniciadas em versões antigas podem ainda ter valores locais.
+      body: JSON.stringify({ steps: steps.map(({input_value, ...step}) => step) }),
     });
 
     if (!stepsRes.ok) {
@@ -508,12 +574,13 @@ chrome.tabs.onRemoved?.addListener(/* Recebe o evento do navegador/Chrome e dele
 chrome.runtime.onMessageExternal?.addListener(/* Recebe o evento do navegador/Chrome e delega ao fluxo registrado neste contexto. | @param message — mensagem recebida entre os contextos da extensão. | @param sender — contexto remetente da mensagem Chrome. | @param respond — valor recebido do contexto chamador. | @returns boolean. */ (message,sender,respond)=>{
   if(message.action!=='CONNECT_ACCOUNT')return false;
   let origin;try{origin=new URL(sender.url).origin;}catch{return false;}
-  if(!['http://localhost:4200','http://127.0.0.1:4200'].includes(origin))return false;
+  if(!(globalThis.OctorEnvironment?.appOrigins ?? ['http://localhost:4200','http://127.0.0.1:4200']).includes(origin))return false;
   enqueue(async()=>{
+    await storageReady;
     if(typeof message.access!=='string' || typeof message.refresh!=='string')throw new Error('Sessão inválida. Entre novamente.');
-    const state=await chrome.storage.local.get(['apiBase','isRecording','playback']);
-    if(state.isRecording || state.playback)throw new Error('Finalize a gravação ou o tutorial antes de trocar de conta.');
-    const response=await fetch((state.apiBase || DEFAULT_API_BASE)+'/auth/me/',{headers:{Authorization:'Bearer '+message.access}});
+    const state=await chrome.storage.local.get(['apiBase','isRecording','playback','manualCapture']);
+    if(state.isRecording || state.playback || state.manualCapture?.active)throw new Error('Finalize a gravação ou o tutorial antes de trocar de conta.');
+    const response=await fetch(DEFAULT_API_BASE+'/auth/me/',{headers:{Authorization:'Bearer '+message.access}});
     if(!response.ok)throw new Error('Sua sessão expirou. Entre novamente.');
     const user=await response.json();
     await chrome.storage.local.set({authToken:message.access,refreshToken:message.refresh,currentUser:user.username});
@@ -521,3 +588,5 @@ chrome.runtime.onMessageExternal?.addListener(/* Recebe o evento do navegador/Ch
   }).then(respond,error=>respond({success:false,error:error.message}));
   return true;
 });
+
+installManualCapture(recordingApiFetch, enqueue);

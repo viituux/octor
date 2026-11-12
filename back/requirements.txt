@@ -10,7 +10,7 @@ django-cors-headers>=4.4.0
 celery>=5.4.0
 # Cliente Python do Redis usado pela configuração de filas do Celery.
 redis>=5.0.0
-# Driver PostgreSQL; SQLite continua disponível pela configuração Django existente.
+# Driver do PostgreSQL, único banco utilizado pelo backend.
 psycopg[binary]>=3.2.0
 # Processamento/validação de imagens capturadas e campos de imagem.
 pillow>=10.4.0
@@ -21,3 +21,4 @@ python-dotenv>=1.0.1
 google-auth>=2.38,<3
 # Chamadas HTTP aos provedores de IA e integração com o transporte de autenticação Google.
 requests>=2.32,<3
+cryptography>=44,<50

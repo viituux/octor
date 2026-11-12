@@ -23,6 +23,10 @@ from .tasks import GenerationError, provider_error
 # Retorno: tupla.
 def audio_source(step):
     if step.narration:
+        file_hash = hashlib.sha256(step.narration.name.encode('utf-8')).hexdigest()
+        if any(isinstance(item, dict) and item.get('type') == 'synthetic_narration'
+               and item.get('file_hash') == file_hash for item in step.annotations):
+            return None, None
         return step.narration, None
     interval = next((a for a in step.annotations if a.get('type') == 'live_narration'), None)
     if step.guide.capture_audio and interval:
@@ -75,7 +79,7 @@ def transcribe_audio(audio, timeline):
         with audio.open('rb') as stream:
             data = base64.b64encode(stream.read()).decode()
         extension = audio.name.lower().rsplit('.', 1)[-1]
-        mime = {'webm':'audio/webm', 'ogg':'audio/ogg', 'm4a':'audio/m4a', 'mp4':'audio/mp4'}.get(extension)
+        mime = {'webm':'audio/webm', 'ogg':'audio/ogg', 'm4a':'audio/m4a', 'mp4':'audio/mp4', 'mp3':'audio/mp3', 'wav':'audio/wav'}.get(extension)
         if not mime:
             raise GenerationError('O formato desta narração não é suportado para transcrição.')
         prompt = ('Transcreva apenas a fala audível do áudio para português, sem inventar ou escrever instruções. '

@@ -1,3 +1,4 @@
+import { API_BASE } from '../api-config';
 /** Cliente HTTP dos treinamentos: separa consultas do participante, gestão e indicadores; filtros são serializados para a API sem alterar os indicadores retornados pelo servidor. */
 /**
  * Dependência ({Injectable}): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
@@ -10,8 +11,25 @@ import {HttpClient,HttpParams} from '@angular/common/http';
 /**
  * Dependência ({Observable}): composição dos fluxos assíncronos e conversão/observação das respostas HTTP.
  */
-import {Observable} from 'rxjs';
-export interface Training{id:number;guide:number;title:string;description:string;status:string;version:number|null;progress?:any;content?:any;summary?:any;participants?:any[]}
+import {Observable,firstValueFrom} from 'rxjs';
+export interface QuizDraft {statement:string;explanation:string;alternatives:{text:string;correct:boolean}[]}
+export type TrainingListItem = (Training & {step_count?: number; reference_only?: boolean}) | {
+  id: number;
+  title: string;
+  status: 'draft';
+  description?: never;
+  progress?: never;
+  step_count?: never;
+  reference_only?: never;
+};
+export interface InstitutionalProfile {
+  objective?: string;
+  audience?: string;
+  prerequisites?: string;
+  duration_minutes?: number | null;
+  final_check?: string;
+}
+export interface Training{id:number;document_profile?:InstitutionalProfile;guide:number;title:string;description:string;status:string;version:number|null;version_info?:any;version_history?:any[];progress?:any;content?:any;summary?:any;participants?:any[];draft_questions?:QuizDraft[];ranking?:any[];ranking_version?:number|null;versions?:number[]}
 /**
  * Normaliza os erros de treinamento para apresentação textual na interface.
  * @param e — any; evento ou falha recebida, conforme o tipo declarado e o uso no corpo.
@@ -20,7 +38,7 @@ export interface Training{id:number;guide:number;title:string;description:string
 export function trainingError(e:any):string{const flatten=/* Transforma mensagens de validação aninhadas em uma sequência textual para apresentação. | @param x — any; contrato tipado na assinatura. | @returns string. */ (x:any):string=>typeof x==='string'?x:Array.isArray(x)?x.map(flatten).join(' '):x&&typeof x==='object'?Object.entries(x).map(([k,v])=>k+': '+flatten(v)).join(' '):'';return flatten(e?.error)||'Não foi possível concluir a operação. Tente novamente.';}
 @Injectable({providedIn:'root'})
 export class TrainingService{
- private base='http://localhost:8000/api/trainings/';
+ private base=API_BASE + '/trainings/';
  /**
   * Recebe as dependências e prepara o estado inicial da instância conforme o ciclo de injeção Angular.
   * @param http — HttpClient; cliente HTTP injetado pelo Angular.
@@ -38,7 +56,7 @@ export class TrainingService{
   * @returns resultado de this.http.get(...).
   * Falhas HTTP seguem pelo canal de erro do Observable; este método não confirma sucesso antes da resposta.
   */
- mine(){return this.http.get<Training[]>(this.base);}
+ mine(){return this.http.get<TrainingListItem[]>(this.base);}
  /**
   * Encaminha a operação `get` à API por this.http.get; a autorização e validação final são do servidor.
   * @param id — number; identificador do recurso ou elemento alvo.
@@ -46,6 +64,18 @@ export class TrainingService{
   * Falhas HTTP seguem pelo canal de erro do Observable; este método não confirma sucesso antes da resposta.
   */
  get(id:number){return this.http.get<Training>(this.base+id+'/');}
+ /** Arquivos privados só são requisitados na origem conhecida da API; URLs blob não persistem no banco. */
+ async hydrateContent(content:any, fields = ['screenshot_url','narration_url','live_narration_url']):Promise<{content:any;urls:string[];warnings:string[]}>{
+   const copy=JSON.parse(JSON.stringify(content||{})),urls:string[]=[],warnings:string[]=[],cache=new Map<string,string>();
+   for(const step of copy.steps||[])for(const field of fields){
+     const path=step[field];
+     if(typeof path!=='string'||!/^\/api\/trainings\/\d+\/versions\/\d+\/(?:assets\/[a-f0-9-]+|legacy-media\/\d+\/(?:screenshot_url|narration_url|live_narration_url))\/$/.test(path))continue;
+     try{if(!cache.has(path)){const blob=await firstValueFrom(this.http.get(new URL(this.base).origin+path,{responseType:'blob'}));const url=URL.createObjectURL(blob);urls.push(url);cache.set(path,url);}step[field]=cache.get(path);}
+     catch{step[field]=null;warnings.push('Um arquivo arquivado está indisponível. Contate o responsável pelo armazenamento.');}
+   }
+   return {content:copy,urls,warnings};
+ }
+ versionDetail(id:number,number:number){return this.http.get<any>(this.base+'admin/'+id+'/versions/'+number+'/');}
  /**
   * Encaminha a operação `action` à API por this.http.post; a autorização e validação final são do servidor.
   * @param id — number; identificador do recurso ou elemento alvo.
@@ -77,6 +107,11 @@ export class TrainingService{
   * Falhas HTTP seguem pelo canal de erro do Observable; este método não confirma sucesso antes da resposta.
   */
  create(data:any){return this.http.post<Training>(this.base+'admin/',data);}
+
+ /** Solicita sugestões para revisar no editor antes de salvar o rascunho. */
+ suggestQuiz(data:{guide:number;title:string;description:string}){
+   return this.http.post<{questions:QuizDraft[]}>(this.base+'admin/quiz-suggestions/',data);
+ }
  /**
   * Encaminha a operação `update` à API por this.http.patch; a autorização e validação final são do servidor.
   * @param id — number; identificador do recurso ou elemento alvo.

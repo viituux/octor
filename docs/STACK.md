@@ -22,7 +22,6 @@ O inventário cobre dependências diretas, recursos nativos e ferramentas releva
 | Tarefas e banco | Dependências Python locais | Celery 5.6.3; cliente redis 8.1.0; psycopg 3.3.6 |
 | Arquivos e HTTP | Dependências Python locais | Pillow 12.3.0; python-dotenv 1.2.4; requests 2.34.2 |
 | Google | `google-auth>=2.38,<3` | Declarado, mas ausente no ambiente virtual inspecionado |
-| Banco local | Biblioteca do Python inspecionado | SQLite 3.50.4 |
 | Serviços auxiliares | Tags de `docker-compose.yml` | PostgreSQL `16-alpine`; Redis `7-alpine`; não comprova execução local |
 | Extensão | `manifest.json` | Manifest V3; pacote 1.0.0; Chrome mínimo declarado 116 |
 
@@ -80,8 +79,7 @@ Django oferece modelos, migrações e administração, além do ciclo HTTP. O OC
 
 | Tecnologia | Onde é usada e adequação | Alternativa comparada | Vantagens / limitações |
 | --- | --- | --- | --- |
-| **SQLite** | Banco padrão em `back/db.sqlite3`; permite executar o projeto local sem serviço de banco separado. | PostgreSQL já é opção configurável para outro perfil de operação, mas exige provisionamento e migração dos dados. | Simplicidade local e testes isolados. Concorrência/bloqueios devem ser avaliados no banco de destino; testes SQLite não comprovam comportamento idêntico no PostgreSQL. |
-| **PostgreSQL** | Opção selecionada por `DB_ENGINE=postgresql`; serviço auxiliar descrito no Compose. É coerente com relações, restrições e transações do domínio. | MySQL poderia atender parte do modelo, mas demandaria driver, configuração e validação das consultas/constraints usados. | Banco relacional servidor, adequado a compartilhar acesso entre processos. Exige operação, backup e teste de migração; configurar não importa dados SQLite automaticamente. |
+| **PostgreSQL** | Único banco suportado pelo backend; instalação local PostgreSQL 18.3 e serviço auxiliar opcional descrito no Compose. É coerente com relações, restrições e transações do domínio. | MySQL poderia atender parte do modelo, mas demandaria driver, configuração e validação das consultas/constraints usados. | Banco relacional servidor, adequado a compartilhar acesso entre processos. Exige operação, backup e teste de migração; requer provisionamento e credenciais de conexão. |
 | **psycopg** | Driver PostgreSQL do Django, com extra `binary` no requirements. | psycopg2 seria outra integração, mas não é o contrato declarado neste projeto. | Conecta ORM ao banco selecionado. Versão do driver não é versão do servidor. |
 | **Arquivos locais / Django FileField e ImageField** | Capturas e áudios ficam em `back/media`; o banco guarda nomes e metadados. | Armazenamento de objetos exigiria backend de storage e controle de URLs/acesso; não está configurado. | Fluxo simples no desenvolvimento. Banco e arquivos precisam de backup conjunto; escalar para vários servidores exige rever armazenamento e acesso. |
 | **Cache Django** | Guarda desafios Google e marcadores de uso único por tempo limitado. Não há `CACHES` próprio configurado no settings inspecionado. | Cache compartilhado é uma possibilidade para múltiplos processos, mas o Redis do Celery não vira cache Django automaticamente. | Reutiliza a API do framework. A estratégia de cache e sua atomicidade entre processos devem ser revistas antes de escalar o fluxo Google. |
@@ -141,7 +139,7 @@ As validações anteriores desta reorganização tiveram 69 testes Node, 89 test
 
 ## Diagrama da arquitetura atual
 
-As conexões representam contratos existentes ou configuráveis, não serviços necessariamente em execução. SQLite e PostgreSQL são alternativas selecionadas por configuração. O Redis participa do fluxo Celery; a geração textual atual também é chamada diretamente pela API.
+As conexões representam contratos existentes ou configuráveis, não serviços necessariamente em execução. O backend utiliza exclusivamente PostgreSQL. O Redis participa do fluxo Celery; a geração textual atual também é chamada diretamente pela API.
 
 ```mermaid
 flowchart LR
@@ -151,7 +149,7 @@ flowchart LR
     E <-->|Ações observadas e orientação| S[Site real no navegador]
     F -->|HTTP JSON e multipart / Bearer| B[back: Django + DRF]
     E -->|HTTP: guias, capturas e áudio / Bearer| B
-    B --> D[(SQLite OU PostgreSQL)]
+    B --> D[(PostgreSQL)]
     B --> M[media: capturas e áudios]
     F <-->|SDK web e credencial| G[Identidade Google]
     B -->|Validação de identidade| G
@@ -172,7 +170,7 @@ flowchart LR
 | Estado/HTTP web | Signals + RxJS + HttpClient | Promises/fetch ou biblioteca de estado | Reutilizar serviços e tratamento existente | Tipos não validam payloads em runtime |
 | API | Django + DRF | FastAPI/Flask/NestJS | Manter modelos, permissões e migrações | Configuração atual é de desenvolvimento |
 | Sessão | JWT + versão de sessão | Cookies de sessão | Contrato compartilhado por web/extensão | Armazenamento e expiração exigem controle |
-| Banco local | SQLite | PostgreSQL configurável | Executar sem provisionar servidor | Concorrência e migração precisam de validação |
+| Banco | PostgreSQL | MySQL como alternativa técnica | Relações, transações e integridade dos dados | Exige servidor, credenciais e backups |
 | Banco servidor | PostgreSQL + psycopg | Outro banco relacional | Preservar relações e transações previstas | Serviço/backup devem ser provisionados |
 | Arquivos | FileField/ImageField + media local | Armazenamento de objetos | Preservar caminhos e contratos | Persistência e acesso em múltiplas instâncias |
 | Tarefas | Celery + Redis | RQ/RabbitMQ ou síncrono | Reutilizar o despacho existente | Vídeo é simulado; worker requer operação |

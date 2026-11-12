@@ -2,6 +2,7 @@
 /**
  * Dependência ({ inject }): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
  */
+import { catchError, map, of } from 'rxjs';
 import { inject } from '@angular/core';
 /**
  * Dependência ({ CanActivateFn, Router }): rotas, parâmetros e navegação entre as telas.
@@ -12,5 +13,7 @@ import { CanActivateFn, Router } from '@angular/router';
  */
 import { AuthService } from './auth.service';
 export const authGuard: CanActivateFn = /* Permite a navegação autenticada ou produz o redirecionamento de login. | @param _route — valor recebido do contexto chamador. | @param state — valor recebido do contexto chamador. | @returns expressão calculada/comparada no corpo. */ (_route,state) => {
- const auth=inject(AuthService);return auth.isAuthenticated() || inject(Router).createUrlTree(['/login'],{queryParams:{returnUrl:state.url}});
+ const auth = inject(AuthService);
+ const router = inject(Router);
+ return auth.ensureAccess().pipe(map(() => true), catchError(() => of(router.createUrlTree(['/login'], {queryParams:{returnUrl:state.url}}))));
 };

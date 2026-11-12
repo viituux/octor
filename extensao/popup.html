@@ -53,6 +53,12 @@
     </div>
 
     <button id="btnStopTutorial" class="btn btn-secondary hidden" style="margin-top:8px">Encerrar tutorial</button>
+    <section id="playbackNarration" class="hidden" aria-labelledby="playbackNarrationTitle">
+      <h3 id="playbackNarrationTitle">Narração do passo</h3>
+      <p id="playbackNarrationStatus" role="status"></p>
+      <audio id="playbackNarrationAudio" class="hidden" style="width:100%" controls preload="metadata" aria-label="Narração do passo atual"></audio>
+      <button id="btnRetryPlaybackNarration" type="button" class="btn btn-secondary hidden">Tentar carregar novamente</button>
+    </section>
     <p id="voiceStatus" ></p>
     <button id="btnFinishSilent" class="btn btn-secondary hidden">Finalizar sem narração</button>
     <div id="recorderMsg" class="error-msg hidden"></div>
@@ -63,6 +69,10 @@
     </div>
   </div>
 
+  <section id="manualStatusPanel" class="stats-card hidden" style="margin-top:16px"><h2 style="font-size:16px">Manual automático</h2><p id="manualCaptureMessage" role="status"></p><button id="btnManualContinue" class="btn btn-primary hidden">Continuar coleta</button><button id="btnManualStop" class="btn btn-secondary hidden">Interromper coleta</button></section>
+  <script src="environment.js"></script>
+  <script src="dialogs.js"></script>
   <script src="popup.js"></script>
+  <script src="playback-narration.js"></script>
 </body>
 </html>

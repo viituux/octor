@@ -1,3 +1,4 @@
+import {OctorLogoComponent} from '../shared/octor-logo.component';
 /** Configurações da conta: carrega perfil, separa operações sensíveis e limpa credenciais transitórias após conclusão ou troca de contexto. */
 /**
  * Dependência ({Component,OnInit,NgZone}): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
@@ -27,7 +28,7 @@ import {GoogleSignInComponent} from './google-sign-in.component';
  * Dependência ({OctorIconComponent}): contratos e comportamento compartilhados de ../shared/octor-icon.component.
  */
 import {OctorIconComponent} from '../shared/octor-icon.component';
-@Component({selector:'app-account',standalone:true,imports:[CommonModule,FormsModule,RouterModule,GoogleSignInComponent,OctorIconComponent],templateUrl:'./account.component.html',styleUrls:['./account.component.css']})
+@Component({selector:'app-account',standalone:true,imports:[OctorLogoComponent,CommonModule,FormsModule,RouterModule,GoogleSignInComponent,OctorIconComponent],templateUrl:'./account.component.html',styleUrls:['./account.component.css']})
 export class AccountComponent implements OnInit{
  section:'profile'|'security'|'connections'='profile';/* boolean: diferencia carga inicial, estado vazio e conteúdo já recebido. */ loading=true;saving=false;loadError='';private statusMessage='';error='';errors:Record<string,string>={};
  firstName='';lastName='';username='';email='';profilePassword='';emailPassword='';currentPassword='';newPassword='';confirmation='';revokePassword='';showPassword=false;
@@ -154,11 +155,13 @@ export class AccountComponent implements OnInit{
   const runtime=(window as any).chrome?.runtime;
   if(!runtime?.sendMessage){this.message='Recarregue a extensão e abra esta página pelo botão Entrar pelo navegador.';return;}
   this.connecting=true;
+  this.auth.extensionSession().subscribe({next: session => {
   const timeout=setTimeout(()=>{this.connecting=false;this.message='A extensão não respondeu. Recarregue-a e tente novamente.';},15000);
-  runtime.sendMessage(this.extensionId,{action:'CONNECT_ACCOUNT',access:this.auth.token(),refresh:localStorage.getItem('refresh_token')},(response:any)=>this.zone.run(()=>{
+  runtime.sendMessage(this.extensionId,{action:'CONNECT_ACCOUNT',access:session.access,refresh:session.refresh},(response:any)=>this.zone.run(()=>{
    clearTimeout(timeout);this.connecting=false;
    if(response?.success)localStorage.setItem('autoguide_extension_id',this.extensionId);
    this.message=runtime.lastError?'Não foi possível conectar à extensão. Recarregue-a e tente novamente.':response?.success?'Conta conectada. Você já pode gravar pela barra lateral.':response?.error || 'Falha ao conectar a conta.';
   }));
+  }, error: () => {this.connecting=false;this.message='Não foi possível emitir a sessão da extensão. Tente novamente.';}});
  }
 }

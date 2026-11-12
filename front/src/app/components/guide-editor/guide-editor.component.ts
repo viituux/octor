@@ -1,3 +1,6 @@
+import { OctorLoadingComponent } from '../shared/octor-loading.component';
+import {OctorLogoComponent} from '../shared/octor-logo.component';
+import {DialogService} from '../../services/dialog.service';
 /** Editor de procedimentos: carrega guia, mantém rascunhos, persiste alterações e oferece geração, exportação e Me guie; permissões vêm do contrato da API. */
 /**
  * Dependência ({ firstValueFrom }): composição dos fluxos assíncronos e conversão/observação das respostas HTTP.
@@ -14,7 +17,7 @@ import { StepNarrationComponent } from './step-narration.component';
 /**
  * Dependência ({ Component, OnInit, OnDestroy }): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
  */
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
 /**
  * Dependência ({ CommonModule }): diretivas e apresentação compartilhada dos templates Angular.
  */
@@ -39,7 +42,7 @@ import { AuthService } from '../../services/auth.service';
 @Component({
   selector: 'app-guide-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, StepNarrationComponent, StepCaptureComponent],
+  imports:[OctorLoadingComponent,OctorLogoComponent,CommonModule, FormsModule, RouterModule, StepNarrationComponent, StepCaptureComponent],
   templateUrl: './guide-editor.component.html',
   styleUrls: ['./guide-editor.component.css']
 })
@@ -68,7 +71,10 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    * Prepara os passos do guia e solicita o início do Me guie à extensão conectada.
    * @returns void.
    */
+  get isReferenceManual():boolean{return !!this.guide?.steps?.some(step=>step.action_type==='reference');}
+  getManualSection(index:number):string{const steps=this.guide?.steps||[];const title=(step:Step)=>step.annotations?.find((item:any)=>item.type==='manual_section')?.title||'';const current=steps[index]?title(steps[index]):'';return index===0||current!==title(steps[index-1])?current:'';}
   startPlayback(): void {
+    if(this.isReferenceManual){this.playbackMessage='Este manual documenta telas observadas e deve ser consultado no editor ou PDF.';return;}
     if (!this.guide?.steps?.length || this.playbackStarting) return;
     this.playbackStarting = true;
     this.playbackMessage = '';
@@ -128,6 +134,23 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
   guideTitle = '';
   generatingStepId: number | null = null;
   generatingAll = false;
+  generatingAllNarration = false;
+  narrationBatchMessage = '';
+  @ViewChild(StepNarrationComponent) private activeNarration?: StepNarrationComponent;
+  private cancelNarrationWait?: () => void;
+
+  get narratableSteps(): Step[] {
+    return (this.guide?.steps || []).filter(step =>
+      step.text?.trim() && !step.narration_url && !step.live_narration_url
+    );
+  }
+
+  get canGenerateAllNarration(): boolean {
+    const narration = this.activeNarration;
+    return this.canEdit && !this.generatingAllNarration && !this.generatingAll
+      && this.generatingStepId === null && !this.savingStepIds.size && this.narratableSteps.length > 0
+      && !(narration?.recording || narration?.requesting || narration?.saving || narration?.draft);
+  }
   generationMessage = '';
   private destroyed = false;
   aiMessages: Record<number, string> = {};
@@ -147,7 +170,8 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
   constructor(
     private route: ActivatedRoute,
     private guideService: GuideService,
-    private router: Router
+    private router: Router,
+    private dialogs: DialogService
   ) {}
 
   /**
@@ -167,6 +191,7 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    */
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.cancelNarrationWait?.();
     this.clearPlaybackRequest();
     this.textTimers.forEach(timer=>clearTimeout(timer));
     if (this.pollInterval) clearInterval(this.pollInterval);
@@ -187,7 +212,11 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
           void this.generateAllInstructions(true);
         }
         if (data.steps && data.steps.length > 0) {
-          this.selectedStep = data.steps[0];
+          const reference = this.route.snapshot.queryParamMap.get('referenceStep');
+          const index = reference && /^[1-9]\d*$/.test(reference) ? Number(reference) - 1 : -1;
+          const step = data.steps[index];
+          this.selectedStep = step || data.steps[0];
+          if (step) setTimeout(() => this.selectStep(step), 0);
         }
       },
       error: /* Trata a falha assíncrona e mantém a mensagem/estado funcional desta operação. | @returns void/undefined; efeitos nas operações do corpo. */ () => {
@@ -200,7 +229,7 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    * Expõe a autorização de edição recebida da API para habilitar os controles do editor.
    * @returns boolean.
    */
-  get canEdit(): boolean { return this.guide?.can_edit !== false; }
+  get canEdit(): boolean { return this.guide?.can_edit === true; }
   /**
    * Solicita a criação de um passo manual e incorpora o registro confirmado pela API ao editor.
    * @returns void.
@@ -303,10 +332,10 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    * @param event — Event; evento do navegador ou ação capturada.
    * @returns void.
    */
-  deleteStep(stepId: number, event: Event): void {
+  async deleteStep(stepId: number, event: Event): Promise<void> {
     if (!this.canEdit) return;
     event.stopPropagation();
-    if (confirm('Deseja excluir este passo?')) {
+    if (await this.dialogs.confirm('Deseja excluir este passo? Esta ação remove o texto e a captura desta etapa.',{title:'Excluir passo',confirmText:'Excluir passo',danger:true})) {
       this.guideService.deleteStep(stepId).subscribe(() => {
         if (this.guide && this.guide.steps) {
           this.guide.steps = this.guide.steps.filter(s => s.id !== stepId);
@@ -373,7 +402,7 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    */
   async generateStepText(step: Step, narrated = false): Promise<void> {
     if (!this.canEdit) return;
-    if (this.generatingAll || this.generatingStepId !== null || this.savingStepIds.size) return;
+    if (this.generatingAllNarration || this.generatingAll || this.generatingStepId !== null || this.savingStepIds.size) return;
     this.generatingStepId = step.id;
     try {
       await this.flushDrafts([step]);
@@ -394,8 +423,9 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    */
   async generateAllInstructions(automatic = false): Promise<void> {
     if (!this.canEdit) return;
-    if (this.generatingAll || this.generatingStepId !== null || this.savingStepIds.size || !this.guide?.steps?.length) return;
-    if (!automatic && !confirm('Gerar as instruções de todas as capturas? Os textos atuais serão substituídos nos passos gerados com sucesso.')) return;
+    if (this.generatingAllNarration || this.generatingAll || this.generatingStepId !== null || this.savingStepIds.size || !this.guide?.steps?.length) return;
+    if (!automatic && !(await this.dialogs.confirm('Gerar as instruções de todas as capturas? Os textos atuais serão substituídos nos passos gerados com sucesso.',{title:'Gerar instruções',confirmText:'Gerar todas as instruções'}))) return;
+    if(this.generatingAllNarration || this.generatingAll || this.generatingStepId !== null || this.savingStepIds.size || !this.canEdit)return;
     this.generatingAll = true;
     const steps = [...this.guide.steps];
     let completed = 0, failed = 0;
@@ -413,6 +443,81 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
     } catch (err: any) {
       this.generationMessage = err.error?.detail || 'Não foi possível preparar a narração. O áudio e os textos foram preservados. Tente novamente.';
     } finally { this.generatingAll = false; this.generatingStepId = null; }
+  }
+
+  /** Gera apenas áudio faltante. Um erro nunca desfaz os passos já salvos. */
+  async generateAllNarration(): Promise<void> {
+    if (!this.canGenerateAllNarration) return;
+    const confirmed = await this.dialogs.confirm(
+      'Gerar áudio para os passos com instrução e sem narração? Os áudios existentes serão preservados.',
+      {title: 'Gerar narrações', confirmText: 'Gerar narrações'}
+    );
+    if (!confirmed || this.destroyed || !this.canGenerateAllNarration) return;
+
+    const steps = this.narratableSteps;
+    this.generatingAllNarration = true;
+    let completed = 0;
+    let failed = 0;
+    let lastError = '';
+    let stopped = false;
+    try {
+      for (const [index, step] of steps.entries()) {
+        if (this.destroyed) return;
+        this.narrationBatchMessage = 'Gerando narração ' + (index + 1) + ' de ' + steps.length + '…';
+        try {
+          await this.flushDrafts([step]);
+          if (this.destroyed) return;
+          const updated = await this.generateMissingNarration(step);
+          if (this.destroyed || !updated) return;
+          step.narration_url = updated.narration_url;
+          completed++;
+        } catch (error: any) {
+          lastError = typeof error?.error?.detail === 'string' ? error.error.detail : 'Não foi possível salvar um dos áudios.';
+          if ([0, 401, 403, 429].includes(error?.status) || error?.status >= 500) {
+            stopped = true;
+            break;
+          }
+          failed++;
+        }
+      }
+      const remaining = steps.length - completed;
+      this.narrationBatchMessage = completed + ' de ' + steps.length + ' narrações geradas.';
+      if (stopped || failed) {
+        this.narrationBatchMessage += ' ' + lastError + ' ' + remaining
+          + ' pendente(s). Use o botão novamente para retomar.';
+      }
+    } finally {
+      this.generatingAllNarration = false;
+    }
+  }
+
+  private async generateMissingNarration(step: Step): Promise<Step | null> {
+    const generate = () => firstValueFrom(this.guideService.generateSpeech(
+      Number(this.guideId), step.id, step.text, false, true
+    ));
+    try {
+      return await generate();
+    } catch (error: any) {
+      if (error?.status !== 429 || this.destroyed) throw error;
+      // O limite local devolve 429. A cota do provedor devolve 503 e encerra o lote.
+      const retry = Number(error.headers?.get('Retry-After'));
+      const seconds = Number.isFinite(retry) && retry > 0 ? Math.min(61, Math.ceil(retry) + 1) : 61;
+      this.narrationBatchMessage = 'Aguardando o limite de requisições. O lote continuará em até ' + seconds + ' segundos.';
+      await this.waitForNarrationQuota(seconds);
+      return this.destroyed ? null : await generate();
+    }
+  }
+
+  private waitForNarrationQuota(seconds: number): Promise<void> {
+    return new Promise(resolve => {
+      const finish = () => {
+        clearTimeout(timer);
+        this.cancelNarrationWait = undefined;
+        resolve();
+      };
+      const timer = setTimeout(finish, seconds * 1000);
+      this.cancelNarrationWait = finish;
+    });
   }
 
   /**
@@ -447,7 +552,7 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
           clearInterval(this.pollInterval);
           this.isVideoRendering = false;
           if (job.status === 'completed') {
-            alert('Vídeo renderizado com sucesso!');
+            void this.dialogs.alert('O processamento do vídeo foi concluído.','Processamento concluído');
           }
         }
       });
@@ -461,6 +566,7 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    */
   getPrintStepTitle(step: Step): string {
     const label = (step.element_text || '').trim().replace(/\s+/g, ' ');
+    if(step.action_type==='reference')return label?'Consultar '+label.slice(0,90):'Consultar a tela de referência';
     const action: Record<string, string> = {click:'Selecionar', input:'Preencher', change:'Selecionar', navigation:'Acessar'};
     if (label) return (action[step.action_type] || 'Interagir com') + ' ' + (label.length > 90 ? label.slice(0,87) + '…' : label);
     return step.action_type === 'navigation' ? 'Acessar a página do procedimento' : 'Executar a ação indicada';
@@ -483,7 +589,29 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    * Monta o documento exportável do procedimento e inicia o download pelo navegador.
    * @returns void.
    */
-  exportHtml(): void {
-    window.print();
+  async exportHtml(): Promise<void> {
+    if (!this.guide || this.printing) return;
+    if (document.querySelector('.editor-shell [data-capture-loading]')) {
+      this.printMessage = 'Aguarde o carregamento das capturas antes de exportar.';
+      return;
+    }
+
+    this.printing = true;
+    this.printMessage = '';
+    try {
+      const sources = new Set(Array.from(document.querySelectorAll('.editor-shell .capture-print image'))
+        .map(image => image.getAttribute('href')).filter((source): source is string => !!source));
+      await Promise.allSettled(Array.from(sources, source => {
+        const image = new Image();
+        image.src = source;
+        return image.decode();
+      }));
+      if (!this.destroyed) window.print();
+    } finally {
+      this.printing = false;
+    }
   }
+
+  printing = false;
+  printMessage = '';
 }

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1.1",
+  "previous_version": "0.0.1.0",
+  "api_contract": 1,
+  "training_snapshot_schema": 1,
+  "changes": [
+    "Versões publicadas com identificação, data, responsável e histórico.",
+    "Cópias independentes dos arquivos nas novas publicações de treinamento.",
+    "Histórico de participação e consulta administrativa para auditoria."
+  ]
+}

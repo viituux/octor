@@ -5,6 +5,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter, SimpleRouter
 # Dependência: contratos e funções do módulo .views reutilizados neste fluxo.
 from .views import GuideViewSet, StepViewSet
+from .media import GuideMediaView
 
 router = DefaultRouter()
 router.register(r"", GuideViewSet, basename="guide")
@@ -14,6 +15,7 @@ step_router.register(r"steps", StepViewSet, basename="step")
 
 # list: contratos de caminhos HTTP; mudar sua ordem pode alterar a resolução de rotas.
 urlpatterns = [
+    path("media/<path:name>", GuideMediaView.as_view(), name="guide-media"),
     path("", include(step_router.urls)),
     path("", include(router.urls)),
 ]

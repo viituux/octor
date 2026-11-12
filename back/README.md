@@ -1,6 +1,10 @@
 # Back — API e persistência do OCTOR
 
+Referência consolidada em 06/11/2026: [documentação técnica](../docs/DOCUMENTACAO-TECNICA.md). As atualizações de [Manual por URL e Qwen/OpenRouter](../docs/MANUAL-POR-URL.md), [PostgreSQL](../docs/POSTGRESQL-LOCAL.md) e [notificações](../docs/NOTIFICACOES-E-MEMBROS.md) complementam este documento. O módulo `manuals` possui configuração de IA independente; vídeo continua simulado e novas versões exigem quiz obrigatório.
+
 Servidor Django/DRF do **OCTOR**. Centraliza usuários e sessões, permissões de guias/equipes, capturas e voz, geração de instruções e treinamentos com avaliação após concluir o conteúdo. É consumido pelo [frontend](../front/README.md) e pela [extensão](../extensao/README.md).
+
+Atualização: [Quiz obrigatório e ranking](../docs/QUIZ-OBRIGATORIO.md) descreve o contrato atual de treinamento e substitui referências anteriores à remoção do quiz.
 
 ## Tecnologias e versões
 
@@ -21,7 +25,7 @@ As faixas abaixo vêm de `requirements.txt`; a coluna local foi consultada no am
 | google-auth | `>=2.38,<3` | **Ausente no ambiente local** |
 | requests | `>=2.32,<3` | 2.34.2 |
 
-SQLite é o padrão local (biblioteca 3.50.4 no Python inspecionado). O Compose da raiz declara PostgreSQL `16-alpine` e Redis `7-alpine`; essas tags são do servidor, diferentes das versões dos clientes Python, e não comprovam containers em execução.
+PostgreSQL é o único banco do backend; a instalação local utiliza PostgreSQL 18.3. O Compose da raiz declara PostgreSQL `16-alpine` e Redis `7-alpine`; essas tags são do servidor, diferentes das versões dos clientes Python, e não comprovam containers em execução.
 
 ## Estrutura
 
@@ -37,7 +41,6 @@ back/
 ├── videos/                   # registro de job e pipeline atualmente simulado
 ├── requirements.txt
 ├── .env*.example             # exemplos sem credenciais reais
-├── db.sqlite3                # dados locais ignorados pelo Git
 ├── media/                    # capturas e áudios locais ignorados
 └── venv/                     # ambiente local ignorado
 ```
@@ -64,8 +67,7 @@ Não execute a cópia sobre um `.env` já configurado. O ambiente movido da inst
 | `SECRET_KEY` | Assinatura Django/JWT; configurar segredo próprio no servidor. O fallback existente é de desenvolvimento. |
 | `DEBUG` | Padrão atual verdadeiro; desabilitar para produção. |
 | `ALLOWED_HOSTS` | Hosts separados por vírgula; padrão atual `*`, a restringir antes de publicar. |
-| `DB_ENGINE` | `postgresql` seleciona PostgreSQL; outro valor usa SQLite local. |
-| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Conexão PostgreSQL. Nomes legados `autoguide_*` foram mantidos para preservar a base existente. |
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Conexão PostgreSQL. Padrões do backend: banco `octor_db`, usuário `octor_user`, host `localhost`, porta `5432`; senha somente no ambiente. Para usar o Compose existente, informe explicitamente as credenciais `autoguide_*` dele. |
 | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Padrão local `redis://localhost:6379/0`. |
 | `GOOGLE_CLIENT_ID` | ID público OAuth Web; este fluxo não usa Client Secret. |
 | `LLM_PROVIDER` | Seleção implementada: `gemini`, `openai` ou `anthropic`. |
@@ -74,7 +76,7 @@ Não execute a cópia sobre um `.env` já configurado. O ambiente movido da inst
 
 O `.env` é carregado a partir da pasta `back`, independentemente da pasta de trabalho do processo. Não há leitura de `DATABASE_URL` implementada. `MEDIA_ROOT` e `STATIC_ROOT` vêm dos caminhos declarados em settings, não de variáveis extras inventadas no `.env`.
 
-Para PostgreSQL/Redis locais, opcionalmente execute na raiz: `docker compose up -d postgres redis`. Isso não muda sozinho a seleção do banco: configure `DB_ENGINE=postgresql` e a conexão. Trocar de SQLite para PostgreSQL **não migra os dados existentes automaticamente**. As credenciais do Compose são de desenvolvimento.
+Para PostgreSQL/Redis locais, opcionalmente execute na raiz: `docker compose up -d postgres redis`. Configure as variáveis `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST` e `DB_PORT` para a instância escolhida. As credenciais do Compose são de desenvolvimento.
 
 ## Executar
 
@@ -143,22 +145,9 @@ Filtros de analytics: `start`, `end` (datas), `rating` (1–5); dashboard aceita
 
 Web e extensão usam `Authorization: Bearer <access>`. A extensão renova a sessão após 401 no fluxo de envio conforme seu próprio código. Google sem credenciais reais configuradas não foi validado ponta a ponta. CORS permite comunicação do navegador, mas não substitui autenticação/permissões.
 
-## Testes e demonstração
+## Verificação manual
 
-```powershell
-.\venv\Scripts\python.exe manage.py test --noinput
-.\venv\Scripts\python.exe manage.py makemigrations --check --dry-run
-```
-
-A suíte anterior à remoção do quiz passou com 89 testes e banco temporário. A remoção possui regressões específicas de conteúdo, avaliação e preservação de histórico. Integrações de IA/Google são simuladas nos cenários pertinentes; aprovação não comprova disponibilidade ou faturamento de um provedor real.
-
-Seed opcional, **somente em desenvolvimento** (`DEBUG=True`):
-
-```powershell
-.\venv\Scripts\python.exe manage.py seed_trainings --password "ESCOLHA-UMA-SENHA-LOCAL-FORTE"
-```
-
-Cria contas com prefixo `octor_demo_` e treinamentos `[DEMO]`. É repetível e não redefine senhas de contas já existentes. O comando grava dados locais e não foi executado como parte da documentação. Nunca crie essas contas em uma base de produção.
+O roteiro de [reconstrução](../docs/RECONSTRUCAO.md) descreve como verificar os fluxos integrados.
 
 ## Deploy
 
@@ -203,7 +192,15 @@ Os comandos são instruções para uma futura implantação; nenhum servidor WSG
 | IA não gera instrução | Conferir chave/modelo/provedor no servidor, conectividade e status retornado; nunca colocar a chave no cliente para contornar a falha. |
 | Áudio não transcreve | Conferir formato, tamanho, intervalo e provedor de voz suportado; a ausência de texto não deve ser substituída por fala inventada. |
 | Job de vídeo fica pending | Verificar broker e worker, lembrando que o pipeline atual é uma simulação. |
-| Captura dá 404 depois do deploy | Conferir persistência/entrega de media e DEBUG; não basta copiar somente o banco. |
+| Captura ou áudio dá 404 depois do deploy | Confira as permissões do guia e o volume persistente da API. A API lê os arquivos em `MEDIA_ROOT`. |
+
+Prints e áudios de guias são entregues pela API autenticada em `/api/guides/media/`.
+No proxy de produção, encaminhe essa rota ao Django e mantenha `MEDIA_ROOT` fora
+de qualquer diretório servido publicamente. Preserve os arquivos e o banco no backup.
 | Conflito 409 ao enviar duas vezes | Recarregar o estado; as restrições impedem duplicar uma escrita concorrente. |
 
 Detalhes adicionais: [conta](../docs/account-settings.md), [equipes](../docs/library-and-workspaces.md), [treinamentos](../docs/trainings-feedback-quiz.md) e [IA](ai/README.md).
+
+### Atualização de sessão
+
+Execute `python manage.py migrate` para instalar as tabelas de revogação do Simple JWT. O acesso expira em 15 minutos. Cada renovação invalida o refresh anterior. A extensão recebe uma sessão própria no pareamento. Ao sair, o cliente solicita a revogação do refresh atual. Tokens de acesso já emitidos continuam válidos até expirar.

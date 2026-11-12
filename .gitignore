@@ -19,3 +19,20 @@ coverage/
 .idea/
 .vscode/
 *.log
+
+# Backups locais podem conter dados pessoais e credenciais de contas.
+back/backups/
+
+# Evidências brutas de manuais são privadas e não entram no Git.
+back/private_manuals/
+back/private_trainings/
+
+# Materiais de trabalho e suítes locais ficam fora da edição publicada.
+/output/
+/tmp/
+/docs/entregas/
+/back/staticfiles/
+/front/tests/
+/extensao/tests/
+/back/**/test_*.py
+/back/**/tests.py

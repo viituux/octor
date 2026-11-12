@@ -1,3 +1,4 @@
+from accounts.notifications import notify
 # Equipes e convites: operações administrativas verificam o proprietário e a aceitação verifica identidade, validade e estado do convite.
 # Dependência: datas e intervalos usados por expiração e filtros.
 from datetime import timedelta
@@ -24,9 +25,13 @@ from rest_framework.response import Response
 # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
 from rest_framework.views import APIView
 # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
-from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.throttling import ScopedRateThrottle, UserRateThrottle
 # Dependência: contratos e funções do módulo .models reutilizados neste fluxo.
 from .models import Workspace, WorkspaceInvitation
+
+
+class MemberSearchThrottle(UserRateThrottle):
+    rate = '30/min'
 
 
 class WorkspaceData(serializers.ModelSerializer):
@@ -90,9 +95,21 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
     # Parâmetros — request: requisição DRF com usuário, corpo e contexto HTTP.
     # Parâmetros — pk: identificador do recurso na URL.
     # Retorno: resultado de Response(...).
-    @action(detail=True,methods=['get','delete'])
+    @action(detail=True,methods=['get','post','delete'])
     def members(self,request,pk=None):
         workspace=self.get_object()
+        if request.method == 'POST':
+            self.require_owner(workspace)
+            user_id=serializers.IntegerField(min_value=1).run_validation(request.data.get('user_id'))
+            user=get_object_or_404(User,pk=user_id,is_active=True)
+            # Serializa adições no mesmo espaço para impedir avisos duplicados.
+            with transaction.atomic():
+                Workspace.objects.select_for_update().get(pk=workspace.pk)
+                if not workspace.members.filter(pk=user.pk).exists():
+                    workspace.members.add(user)
+                    notify(user,'workspace_added','Você foi adicionado a uma equipe',
+                           f'{request.user.username} adicionou você ao espaço {workspace.name}.',
+                           f'/guides?workspace={workspace.id}')
         if request.method == 'DELETE':
             self.require_owner(workspace)
             user_id=serializers.IntegerField(min_value=1).run_validation(request.data.get('user_id'))
@@ -100,10 +117,26 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
                 return Response({'detail':'O administrador não pode ser removido.'},status=400)
             with transaction.atomic():
                 removed=User.objects.filter(pk=user_id).first()
+                was_member=workspace.members.filter(pk=user_id).exists()
                 workspace.members.remove(user_id)
+                if removed and was_member:
+                    notify(removed,'workspace_removed','Acesso à equipe encerrado',f'Você foi removido do espaço {workspace.name}.')
                 if removed:
                     workspace.invitations.filter(email__iexact=removed.email,revoked_at__isnull=True).update(revoked_at=timezone.now())
-        return Response([{'id':u.id,'name':u.first_name or u.username,'email':u.email,'role':'owner' if u.id==workspace.owner_id else 'member'} for u in workspace.members.order_by('username')])
+        return Response([{'id':u.id,'username':u.username,'name':u.first_name or u.username,'email':u.email,'role':'owner' if u.id==workspace.owner_id else 'member'} for u in workspace.members.order_by('username')])
+    @action(detail=True, methods=['get'], url_path='user-search', throttle_classes=[MemberSearchThrottle])
+    def user_search(self, request, pk=None):
+        """Busca por username para o administrador, sem expor e-mails na pesquisa."""
+        workspace=self.get_object()
+        self.require_owner(workspace)
+        query=request.query_params.get('q','').strip()
+        if len(query)<2:
+            return Response([])
+        if len(query)>150:
+            raise serializers.ValidationError({'q':'Use no máximo 150 caracteres.'})
+        users=User.objects.filter(is_active=True,username__icontains=query).exclude(pk__in=workspace.members.values('pk')).order_by('username')[:20]
+        return Response([{'id':u.id,'username':u.username,'name':u.first_name or u.username} for u in users])
+
     # Lista ou administra convites da equipe após verificar o papel exigido.
     # Parâmetros — request: requisição DRF com usuário, corpo e contexto HTTP.
     # Parâmetros — pk: identificador do recurso na URL.

@@ -1,6 +1,6 @@
 /** Apresentação Me guie: injeta instruções/destaque, acompanha o layout e deixa a execução das ações para o usuário. Próximo pode pular uma etapa; não comprova sua execução. */
 (() => {
-  const /* string[]: origens locais aceitas para a ponte do editor; não equivalem a uma lista de sites de treinamento permitidos. */ EDITOR_ORIGINS = ['http://localhost:4200', 'http://127.0.0.1:4200'];
+  const /* string[]: origens locais aceitas para a ponte do editor; não equivalem a uma lista de sites de treinamento permitidos. */ EDITOR_ORIGINS = (globalThis.OctorEnvironment?.appOrigins ?? ['http://localhost:4200', 'http://127.0.0.1:4200']);
   // Esta ponte aceita conteúdo do guia apenas das origens locais verificadas; não recebe credenciais por esse contrato.
   if (EDITOR_ORIGINS.includes(location.origin)) {
     window.addEventListener('message', /* Trata evento message no contexto deste módulo; o estado e as verificações do handler delimitam quando a ação é aceita. | @param event — evento do navegador ou ação capturada. | @returns void/undefined. */ async event => {
@@ -15,6 +15,7 @@
   }
 
   let host, shadow, panel, highlight, status, heading, instruction, previous, next, progress, stepLabel;
+  let reference, referenceStatus, retry;
   let session = null, target = null, observer = null, frame = null, /* boolean: bloqueia submissões repetidas enquanto a operação atual aguarda resposta. */ busy = false;
   let lastStep = null, scrolledTarget = null, lastLayoutCheck = 0;
   /**
@@ -48,6 +49,8 @@
   function locate() {
     if (!session || !host) return;
     const step = session.steps[session.index];
+    reference.hidden = !session.referenceUrl;
+    retry.hidden = false;
     if (location.href !== step.url) {
       target = null; highlight.hidden = true;
       status.textContent = 'Abra a página deste passo para continuar.';
@@ -62,9 +65,15 @@
     const rect = target?.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) {
       highlight.hidden = true;
-      status.textContent = result.ambiguous ? 'Mais de um elemento corresponde ao passo. Abra o menu correto ou tente novamente.' : 'Aguardando o elemento. Abra o menu necessário, tente novamente ou pule este passo.';
+      const label = (step.target?.label || step.element_text || '').slice(0, 120);
+      const hint = label ? ' Procure por “' + label + '”.' : '';
+      status.textContent = (result.ambiguous ? 'Encontrei mais de um elemento parecido.' : 'Ainda não encontrei o elemento deste passo.')
+        + hint + ' Abra o menu correspondente, se necessário, e tente novamente.';
+      Object.assign(panel.style, {left:'auto', top:'auto', right:'16px', bottom:'16px'});
       return;
     }
+    reference.hidden = true;
+    retry.hidden = true;
     highlight.hidden = false;
     Object.assign(highlight.style, { left: `${rect.left - 4}px`, top: `${rect.top - 4}px`, width: `${rect.width + 8}px`, height: `${rect.height + 8}px` });
     status.textContent = 'Execute a ação e clique em Próximo.';
@@ -115,8 +124,36 @@
     const controls = document.createElement('div'); controls.className = 'controls';
     previous = button('Voltar', () => move(-1));
     next = button('Próximo', () => move(1));
-    controls.append(previous, next, button('Tentar novamente', () => { target = null; scrolledTarget = null; locate(); target?.scrollIntoView({ block: 'center', inline: 'nearest' }); }),
-      button('Abrir página', () => { if (session) location.assign(session.steps[session.index].url); }),
+    retry = button('Tentar novamente', () => { target = null; scrolledTarget = null; locate(); });
+    referenceStatus = document.createElement('p');
+    referenceStatus.setAttribute('role', 'status');
+    referenceStatus.hidden = true;
+    reference = button('Ver captura no OCTOR', async () => {
+      if (!session || reference.disabled) return;
+      reference.disabled = true;
+      referenceStatus.hidden = true;
+      try {
+        const result = await chrome.runtime.sendMessage({ action: 'OPEN_PLAYBACK_REFERENCE', index: session.index });
+        if (!result?.success) throw new Error();
+      } catch {
+        referenceStatus.textContent = 'Não foi possível abrir a captura. Tente novamente.';
+        referenceStatus.hidden = false;
+      } finally {
+        reference.disabled = false;
+      }
+    });
+    controls.append(previous, next, retry, reference,
+      button('Abrir página', async () => {
+        if (!session) return;
+        try {
+          const result = await chrome.runtime.sendMessage({ action: 'OPEN_PLAYBACK_PAGE', index: session.index });
+          if (result?.success || result?.playback) return;
+          throw new Error();
+        } catch {
+          referenceStatus.textContent = 'Não foi possível abrir a página com a proteção ativa. Consulte o passo no OCTOR.';
+          referenceStatus.hidden = false;
+        }
+      }),
       button('Encerrar', async () => {
         try { await chrome.runtime.sendMessage({ action: 'STOP_PLAYBACK' }); cleanup(); }
         catch { status.textContent = 'Não foi possível encerrar. Tente novamente.'; }
@@ -124,7 +161,7 @@
     stepLabel = document.createElement('div'); stepLabel.className = 'step-label';
     const track = document.createElement('div'); track.className = 'progress';
     progress = document.createElement('div'); track.append(progress);
-    panel.append(stepLabel, heading, track, instruction, status, controls);
+    panel.append(stepLabel, heading, track, instruction, status, controls, referenceStatus);
     shadow.append(style, highlight, panel);
     document.documentElement.append(host);
     // A camada superior evita que transformações dos ancestrais do site desloquem as coordenadas fixas.
@@ -144,14 +181,21 @@
    */
   function render(playback) {
     if (!playback) { cleanup(); return; }
-    if (session?.index !== playback.index) scrolledTarget = null;
+    const stepChanged = session?.index !== playback.index;
+    if (stepChanged) scrolledTarget = null;
     session = playback;
     if (!host) mount();
+    if (stepChanged) referenceStatus.hidden = true;
     const step = playback.steps[playback.index];
     heading.textContent = playback.title;
     stepLabel.textContent = 'PASSO ' + (playback.index+1) + ' DE ' + playback.steps.length;
     progress.style.width = ((playback.index+1)/playback.steps.length*100) + '%';
     instruction.textContent = step.text;
+    if (step.narration) {
+      const audioHint = document.createElement('small');
+      audioHint.textContent = 'Para ouvir a narração deste passo, abra o painel lateral da extensão OCTOR.';
+      instruction.append(document.createElement('br'), audioHint);
+    }
     previous.disabled = playback.index === 0 || busy;
     next.disabled = busy;
     next.textContent = playback.index === playback.steps.length - 1 ? 'Concluir' : 'Próximo / Pular';
@@ -184,8 +228,8 @@
     } catch (error) { if (status) status.textContent = error.message; }
     finally { busy = false; if (session && next?.isConnected) { previous.disabled = session.index === 0; next.disabled = false; } }
   }
-  chrome.storage.onChanged.addListener(/* Recebe o evento do navegador/Chrome e delega ao fluxo registrado neste contexto. | @param changes — valor recebido do contexto chamador. | @param area — valor recebido do contexto chamador. | @returns void/undefined; efeitos nas operações do corpo. */ (changes, area) => {
-    if (area === 'local' && changes.playback) refresh();
+  chrome.runtime.onMessage.addListener((message, sender) => {
+    if (message.action === 'PLAYBACK_STATE_CHANGED' && sender.id === chrome.runtime.id) refresh();
   });
   /**
    * Consulta o estado persistido do tutorial e atualiza ou remove sua apresentação.

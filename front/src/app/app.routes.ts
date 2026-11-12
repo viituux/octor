@@ -1,3 +1,5 @@
+import {ManualsComponent} from './components/manuals/manuals.component';
+import { NotificationsComponent } from './components/notifications/notifications.component';
 /** Rotas web: associa telas e guards; os guards organizam a navegação e não substituem permissões do backend. */
 /**
  * Dependência ({ TrainingListComponent }): contratos e comportamento compartilhados de ./components/trainings/training-list.component.
@@ -49,15 +51,21 @@ import { GuideListComponent } from './components/guide-list/guide-list.component
 import { GuideEditorComponent } from './components/guide-editor/guide-editor.component';
 
 export const routes: Routes = [
+  {path:'help', loadComponent: () => import('./components/help/help.component').then(m => m.HelpComponent), canActivate:[authGuard]},
+  {path:'manuals',component:ManualsComponent,canActivate:[authGuard]},
+  {path:'manuals/:id',component:ManualsComponent,canActivate:[authGuard]},
+  {path:'notifications',component:NotificationsComponent,canActivate:[authGuard]},
   {path:'trainings',component:TrainingListComponent,canActivate:[authGuard]},
   {path:'trainings/:id',component:TrainingPlayerComponent,canActivate:[authGuard]},
   {path:'training-admin',component:TrainingAdminComponent,canActivate:[authGuard,trainingAdminGuard]},
   {path:'training-admin/new',component:TrainingAdminComponent,canActivate:[authGuard,trainingAdminGuard],data:{editor:true}},
+  {path:'training-admin/:id/pdf/:version', loadComponent: () => import('./components/trainings/training-pdf.component').then(m => m.TrainingPdfComponent), canActivate:[authGuard,trainingAdminGuard]},
   {path:'training-admin/:id',component:TrainingAdminComponent,canActivate:[authGuard,trainingAdminGuard],data:{editor:true}},
   {path:'training-dashboard',component:TrainingDashboardComponent,canActivate:[authGuard,trainingAdminGuard]},
   { path: 'login', component: LoginComponent },
   { path: 'register', component: LoginComponent, data:{register:true} },
   { path: 'account', component: AccountComponent, canActivate:[authGuard] },
+  { path: 'ai-settings', redirectTo: '/guides?section=settings', pathMatch: 'full' },
   { path: 'join/:token', component: WorkspaceInviteComponent, canActivate:[authGuard] },
   { path: 'guides', component: GuideListComponent, canActivate:[authGuard] },
   { path: 'guides/:id', component: GuideEditorComponent, canActivate:[authGuard] },

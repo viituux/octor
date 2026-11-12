@@ -5,18 +5,45 @@ from datetime import timedelta
 from pathlib import Path
 # Dependência: leitura de variáveis e configuração do processo.
 import os
+from django.core.exceptions import ImproperlyConfigured
 # Dependência: carregamento do arquivo local de variáveis sem embutir chaves no código.
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-# str: segredo de assinatura obtido do ambiente; o fallback existente é de desenvolvimento.
-SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-autoguide-default-key")
-# bool: habilita o modo de desenvolvimento conforme a variável de ambiente.
-DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1")
-# list[str]: hosts aceitos pelo Django conforme a configuração atual.
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
+def env_list(name, default=""):
+    return [value.strip() for value in os.getenv(name, default).split(",") if value.strip()]
+
+
+def production_key(name):
+    value = os.getenv(name, "").strip()
+    if len(value) < 50 or len(set(value)) < 5 or value.lower().startswith(("django-insecure-", "replace-")):
+        raise ImproperlyConfigured(f"Configure {name} com um segredo forte antes de iniciar a produção.")
+    return value
+
+
+DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1")
+if DEBUG:
+    SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-autoguide-default-key")
+    JWT_SIGNING_KEY = SECRET_KEY
+    ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]")
+else:
+    SECRET_KEY = production_key("SECRET_KEY")
+    JWT_SIGNING_KEY = production_key("JWT_SIGNING_KEY")
+    if JWT_SIGNING_KEY == SECRET_KEY:
+        raise ImproperlyConfigured("JWT_SIGNING_KEY e SECRET_KEY precisam ser diferentes.")
+    ALLOWED_HOSTS = env_list("ALLOWED_HOSTS")
+    if not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS:
+        raise ImproperlyConfigured("Defina ALLOWED_HOSTS explicitamente em produção.")
+
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # Ative apenas se o proxy remover cabeçalhos encaminhados enviados pelo cliente.
+    if os.getenv("TRUST_HTTPS_PROXY", "").lower() in ("true", "1"):
+        SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 
 # list[str]: aplicações registradas para modelos, rotas e tarefas.
 INSTALLED_APPS = [
@@ -30,12 +57,14 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     # Aplicações próprias do projeto.
     "accounts",
     "guides",
     "trainings",
     "videos",
     "ai",
+    "manuals",
 ]
 
 # list[str]: ordem de processamento das requisições e respostas Django.
@@ -70,28 +99,17 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# PostgreSQL é selecionado pelo ambiente; SQLite mantém a execução local quando essa configuração não existe.
-DB_ENGINE = os.getenv("DB_ENGINE", "sqlite3")
-if DB_ENGINE == "postgresql":
-    # dict: conexão selecionada entre PostgreSQL configurado e SQLite local.
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.getenv("DB_NAME", "autoguide_db"),
-            "USER": os.getenv("DB_USER", "autoguide_user"),
-            "PASSWORD": os.getenv("DB_PASSWORD", "autoguide_password"),
-            "HOST": os.getenv("DB_HOST", "localhost"),
-            "PORT": os.getenv("DB_PORT", "5432"),
-        }
+# PostgreSQL é o único banco da aplicação; credenciais permanecem no ambiente.
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("DB_NAME", "octor_db"),
+        "USER": os.getenv("DB_USER", "octor_user"),
+        "PASSWORD": os.getenv("DB_PASSWORD", ""),
+        "HOST": os.getenv("DB_HOST", "localhost"),
+        "PORT": os.getenv("DB_PORT", "5432"),
     }
-else:
-    # dict: conexão selecionada entre PostgreSQL configurado e SQLite local.
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -115,13 +133,15 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # CORS settings (Angular & Chrome Extension support)
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = DEBUG
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^chrome-extension://.*$",
     r"^http://localhost:[0-9]+$",
     r"^http://127.0.0.1:[0-9]+$",
-]
-CORS_ALLOW_CREDENTIALS = True
+] if DEBUG else []
+CORS_ALLOW_CREDENTIALS = DEBUG
 CORS_ALLOW_HEADERS = [
     "authorization",
     "content-type",
@@ -145,9 +165,11 @@ REST_FRAMEWORK = {
 # Prazos e comportamento dos tokens JWT de acesso e renovação.
 # dict: prazos e comportamento de emissão/renovação dos JWTs.
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=7),
+    "SIGNING_KEY": JWT_SIGNING_KEY,
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
-    "ROTATE_REFRESH_TOKENS": False,
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
@@ -168,6 +190,16 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 # Identificador público OAuth Web do Google; o fluxo atual valida ID token sem Client Secret.
 # str: identificação pública do cliente Google configurado para esta aplicação.
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "suporte@octor.app.br").strip()
+EMAIL_HOST = os.getenv("EMAIL_HOST", "").strip()
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "").lower() in ("true", "1")
+EMAIL_USE_TLS = not EMAIL_USE_SSL and os.getenv("EMAIL_USE_TLS", "true").lower() in ("true", "1")
+EMAIL_TIMEOUT = 5
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER).strip()
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {"auth": "30/min"}
 
 # Credenciais de IA pertencem ao ambiente do servidor; as APIs da conta não as devolvem.
@@ -175,3 +207,16 @@ LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'gemini').strip()
 # str: credencial lida somente no servidor; não pertence às preferências retornadas ao cliente.
 LLM_API_KEY = os.getenv('LLM_API_KEY', os.getenv('GEMINI_API_KEY', '')).strip()
 LLM_MODEL = os.getenv('LLM_MODEL', '').strip()
+
+# Configuração independente: somente o Manual por URL usa este provedor.
+# Sem override, preserva a integração Gemini existente.
+MANUAL_LLM_PROVIDER = os.getenv('MANUAL_LLM_PROVIDER', '').strip().lower()
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '').strip()
+MANUAL_LLM_MODEL = os.getenv('MANUAL_LLM_MODEL', 'qwen/qwen3-vl-30b-a3b-instruct').strip()
+
+
+# Chaves próprias são cifradas com uma chave Fernet exclusiva do servidor.
+OCTOR_AI_ENCRYPTION_KEY = os.getenv("OCTOR_AI_ENCRYPTION_KEY", "")
+GEMINI_TTS_API_KEY = os.getenv("GEMINI_TTS_API_KEY", "")
+GEMINI_TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-3.8-flash-tts")
+GEMINI_TTS_VOICE = os.getenv("GEMINI_TTS_VOICE", "Kore")

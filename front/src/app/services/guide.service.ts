@@ -1,3 +1,4 @@
+import { API_BASE } from '../api-config';
 /** Cliente HTTP de guias, equipes, passos e mídia. Os métodos devolvem Observables; os componentes controlam assinatura e mensagens, e o servidor decide as permissões. */
 /**
  * Dependência ({ Injectable }): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
@@ -35,7 +36,8 @@ export interface Step {
 }
 
 export interface Workspace { id:number; name:string; owner:number|null; role:'owner'|'member'; member_count:number; }
-export interface TeamMember { id:number; name:string; email:string; role:'owner'|'member'; }
+export interface UserSearchResult { id:number; username:string; name:string; }
+export interface TeamMember { id:number; username?:string; name:string; email:string; role:'owner'|'member'; }
 export interface TeamInvite { id:number; email:string; expires_at:string; expired?:boolean; token?:string; }
 export interface Guide {
   workspace?:number|null; workspace_name?:string|null; can_edit?:boolean; is_favorite?:boolean; shared_directly?:boolean; trashed_at?:string|null;
@@ -72,7 +74,7 @@ export class GuideService {
   /**
    * string: prefixo dos endpoints do módulo no servidor local.
    */
-  private apiBase = 'http://localhost:8000/api';
+  private apiBase = API_BASE;
 
   /**
    * Recebe as dependências e prepara o estado inicial da instância conforme o ciclo de injeção Angular.
@@ -177,6 +179,10 @@ export class GuideService {
    * @returns resultado de this.http.get(...).
    * Falhas HTTP seguem pelo canal de erro do Observable; este método não confirma sucesso antes da resposta.
    */
+  /** Busca contas por username; somente o administrador pode consultar. */
+  searchUsers(id:number,q:string) {return this.http.get<UserSearchResult[]>(this.apiBase+'/workspaces/'+id+'/user-search/',{params:{q}});}
+  /** Adiciona a conta selecionada e aguarda a confirmação da API. */
+  addMember(id:number,user_id:number) {return this.http.post<TeamMember[]>(this.apiBase+'/workspaces/'+id+'/members/',{user_id});}
   members(id:number) {return this.http.get<TeamMember[]>(this.apiBase+'/workspaces/'+id+'/members/');}
   /**
    * Solicita a remoção do membro e atualiza a apresentação da equipe.
@@ -271,6 +277,11 @@ export class GuideService {
    * @returns Observable<Step>.
    * Falhas HTTP seguem pelo canal de erro do Observable; este método não confirma sucesso antes da resposta.
    */
+  generateSpeech(guideId: number, stepId: number, text: string, replace: boolean, preserveLive = false): Observable<Step> {
+    return this.http.post<Step>(`${this.apiBase}/guides/${guideId}/steps/${stepId}/generate-speech/`,
+      {text, replace, preserve_live: preserveLive});
+  }
+
   saveNarration(id: number, audio: Blob): Observable<Step> {
     const data = new FormData();
     const extension = audio.type.includes('mp4') ? 'm4a' : audio.type.includes('ogg') ? 'ogg' : 'webm';

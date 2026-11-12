@@ -1,17 +1,51 @@
-"""Valida cadastro de treinamento, atribuição e avaliação, sem entradas de quiz."""
+"""Valida rascunhos do quiz, atribuição e avaliação; publicação exige completude."""
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 from .models import Training
 
 
+class AlternativeDraft(serializers.Serializer):
+    text=serializers.CharField(max_length=500,allow_blank=True)
+    correct=serializers.BooleanField()
+
+
+class QuestionDraft(serializers.Serializer):
+    statement=serializers.CharField(max_length=1500,allow_blank=True)
+    explanation=serializers.CharField(max_length=1500,allow_blank=True,default='')
+    alternatives=AlternativeDraft(many=True,min_length=4,max_length=4)
+
+
+def validate_complete_quiz(data):
+    """Valida a estrutura completa usada na publicação e nas sugestões."""
+    questions=QuestionDraft(data=data,many=True,min_length=5,max_length=5)
+    questions.is_valid(raise_exception=True)
+    for index,q in enumerate(questions.validated_data,1):
+        if not q['statement'].strip() or any(not a['text'].strip() for a in q['alternatives']) or sum(a['correct'] for a in q['alternatives'])!=1:
+            raise ValidationError(f'Pergunta {index}: preencha enunciado, quatro alternativas e marque exatamente uma correta.')
+        if len({a['text'].strip().casefold() for a in q['alternatives']})!=4:
+            raise ValidationError(f'Pergunta {index}: as quatro alternativas devem ser diferentes.')
+    return questions.validated_data
+
+
+class DocumentProfileInput(serializers.Serializer):
+    objective = serializers.CharField(max_length=2000, required=False, allow_blank=True)
+    audience = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    prerequisites = serializers.CharField(max_length=2000, required=False, allow_blank=True)
+    duration_minutes = serializers.IntegerField(min_value=1, max_value=1440, required=False, allow_null=True)
+    final_check = serializers.CharField(max_length=2000, required=False, allow_blank=True)
+
+
 class TrainingInput(serializers.ModelSerializer):
+    document_profile = DocumentProfileInput(required=False)
+    draft_questions=QuestionDraft(many=True,max_length=5,required=False)
     class Meta:
         model = Training
-        fields = ['guide', 'title', 'description']
+        fields = ['guide', 'title', 'description', 'draft_questions', 'document_profile']
 
     def to_internal_value(self, data):
-        """Rejeita campos removidos; retorna os dados do contrato atual ou ValidationError."""
-        if any(key in data for key in ('draft_questions', 'max_attempts')):
-            raise serializers.ValidationError({'non_field_errors': ['O quiz foi removido dos treinamentos. Envie somente os dados do procedimento.']})
+        """Tentativas são liberadas individualmente; não aceita alteração global por este contrato."""
+        if 'max_attempts' in data:
+            raise serializers.ValidationError({'max_attempts':'Use a liberação individual de nova tentativa.'})
         return super().to_internal_value(data)
 
     def validate_guide(self, guide):

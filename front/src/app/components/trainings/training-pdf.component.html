@@ -1,0 +1,66 @@
+<main>
+  <nav class="print-tools" aria-label="Exportação do treinamento">
+    <a [routerLink]="['/training-admin', id]">← Voltar ao treinamento</a>
+    <button type="button" [disabled]="!document || printing" (click)="print()">{{printing ? 'Preparando…' : 'Imprimir / Salvar PDF'}}</button>
+  </nav>
+  <p class="print-tools" *ngIf="loading" role="status">Preparando o documento…</p>
+  <p class="print-tools" *ngIf="error" role="alert">{{error}}</p>
+  <p class="print-tools" *ngIf="warnings.length" role="status">Algumas capturas estão indisponíveis e aparecem identificadas no documento.</p>
+  <article *ngIf="document as doc" class="institutional-document">
+    <header class="institutional-header">
+      <div class="brand-row"><app-octor-logo [width]="104"></app-octor-logo><span>Material institucional</span></div>
+      <p class="section-tag">Treinamento institucional</p>
+      <h1>{{doc.title}}</h1>
+      <dl class="metadata">
+        <div><dt>Identificação</dt><dd>TRN-{{id}}</dd></div>
+        <div *ngIf="revision"><dt>Versão</dt><dd>{{revision.label}}</dd></div>
+        <div *ngIf="revision"><dt>Publicação</dt><dd>{{revision.published_at | date:'dd/MM/yyyy'}}</dd></div>
+        <div *ngIf="doc.document_profile?.duration_minutes as duration"><dt>Duração estimada</dt><dd>{{duration}} min</dd></div>
+      </dl>
+      <section *ngIf="doc.document_profile?.objective || doc.description as objective">
+        <h2>Objetivo</h2>
+        <p>{{objective}}</p>
+      </section>
+      <section *ngIf="doc.document_profile?.audience as audience">
+        <h2>Público-alvo</h2>
+        <p>{{audience}}</p>
+      </section>
+      <section *ngIf="doc.document_profile?.prerequisites as requirements">
+        <h2>Pré-requisitos</h2>
+        <p>{{requirements}}</p>
+      </section>
+    </header>
+
+    <section aria-labelledby="institutional-practice">
+      <h2 class="section-heading" id="institutional-practice">Prática guiada</h2>
+      <article *ngFor="let step of doc.steps; index as i" class="print-step"
+        [class.compact-step]="step.screenshot_url && (step.text || '').length <= 220">
+        <div>
+          <h3>Passo {{i + 1}}</h3>
+          <p>{{step.text}}</p>
+        </div>
+        <figure *ngIf="step.screenshot_url as source; else noScreenshot">
+          <img [src]="source" [alt]="'Captura da tela no passo ' + (i + 1)">
+          <figcaption>Figura {{i + 1}} · Tela do passo {{i + 1}}</figcaption>
+        </figure>
+        <ng-template #noScreenshot><p class="missing-capture">Captura indisponível para este passo.</p></ng-template>
+      </article>
+      <p *ngIf="!doc.steps?.length">Esta versão não possui passos registrados.</p>
+    </section>
+
+    <section class="final-check">
+      <h2 class="section-heading">Conferência final</h2>
+      <p>{{doc.document_profile?.final_check || 'Confira se o resultado da tarefa corresponde ao apresentado no último passo.'}}</p>
+    </section>
+
+    <section *ngIf="history.length" aria-labelledby="institutional-history">
+      <h2 class="section-heading" id="institutional-history">Histórico de alterações</h2>
+      <table>
+        <thead><tr><th scope="col">Versão</th><th scope="col">Publicação</th><th scope="col">Resumo</th></tr></thead>
+        <tbody><tr *ngFor="let item of history">
+          <td>{{item.label}}</td><td>{{item.published_at | date:'dd/MM/yyyy'}}</td><td>{{item.release_notes || 'Sem resumo registrado.'}}</td>
+        </tr></tbody>
+      </table>
+    </section>
+  </article>
+</main>
