@@ -40,6 +40,7 @@ export interface UserSearchResult { id:number; username:string; name:string; }
 export interface TeamMember { id:number; username?:string; name:string; email:string; role:'owner'|'member'; }
 export interface TeamInvite { id:number; email:string; expires_at:string; expired?:boolean; token?:string; }
 export interface Guide {
+  playback_environment?: "unclassified" | "test" | "production";
   workspace?:number|null; workspace_name?:string|null; can_edit?:boolean; is_favorite?:boolean; shared_directly?:boolean; trashed_at?:string|null;
   capture_audio_url?: string | null;
   owner_username?: string;

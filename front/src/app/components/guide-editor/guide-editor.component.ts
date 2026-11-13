@@ -63,6 +63,27 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
   }
 
   playbackStarting = false;
+  savingPlaybackEnvironment = false;
+
+  classifyPlayback(environment: 'test' | 'production'): void {
+    if (!this.guide || !this.canEdit || this.savingPlaybackEnvironment || this.playbackStarting) return;
+    const guide = this.guide;
+    this.savingPlaybackEnvironment = true;
+    this.playbackMessage = '';
+    this.guideService.updateGuide(guide.id, {playback_environment: environment}).subscribe({
+      next: saved => {
+        guide.playback_environment = saved.playback_environment;
+        this.savingPlaybackEnvironment = false;
+        this.playbackMessage = environment === 'test'
+          ? 'Ambiente marcado como homologação. A extensão ainda verifica os endereços do roteiro.'
+          : 'Ambiente marcado como produção. Revise o procedimento pelas capturas.';
+      },
+      error: () => {
+        this.savingPlaybackEnvironment = false;
+        this.playbackMessage = 'Não foi possível salvar a classificação do ambiente.';
+      },
+    });
+  }
   playbackMessage = '';
   private playbackTimer: ReturnType<typeof setTimeout> | undefined;
   private playbackListener: ((event: MessageEvent) => void) | undefined;
@@ -73,11 +94,32 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    */
   get isReferenceManual():boolean{return !!this.guide?.steps?.some(step=>step.action_type==='reference');}
   getManualSection(index:number):string{const steps=this.guide?.steps||[];const title=(step:Step)=>step.annotations?.find((item:any)=>item.type==='manual_section')?.title||'';const current=steps[index]?title(steps[index]):'';return index===0||current!==title(steps[index-1])?current:'';}
-  startPlayback(): void {
+  async startPlayback(): Promise<void> {
     if(this.isReferenceManual){this.playbackMessage='Este manual documenta telas observadas e deve ser consultado no editor ou PDF.';return;}
     if (!this.guide?.steps?.length || this.playbackStarting) return;
+    if (this.savingPlaybackEnvironment || this.guide.playback_environment !== 'test') {
+      this.playbackMessage = 'O Me guie ao vivo exige um guia classificado como homologação.';
+      return;
+    }
     this.playbackStarting = true;
     this.playbackMessage = '';
+    const firstUrl = this.guide.steps[0].url;
+    let origin: string;
+    try {
+      origin = new URL(firstUrl).origin;
+    } catch {
+      this.playbackStarting = false;
+      this.playbackMessage = 'O primeiro passo está sem um endereço válido. Revise a captura.';
+      return;
+    }
+    const confirmed = await this.dialogs.confirm(
+      `O roteiro começa em ${origin}. Se os endereços estiverem autorizados para testes, o Me guie abrirá outra aba e mostrará as instruções nela.`,
+      {title: 'Testar Me guie', confirmText: 'Iniciar teste'},
+    );
+    if (!confirmed || this.destroyed) {
+      this.playbackStarting = false;
+      return;
+    }
     const requestId = crypto.randomUUID();
     this.playbackListener = (event: MessageEvent) => {
       if (event.source !== window || event.origin !== location.origin || event.data?.requestId !== requestId) return;
@@ -94,6 +136,10 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
     }, 10000);
     const payload = { type: 'AUTOGUIDE_START', requestId, title: this.guideTitle,
       steps: this.guide.steps.map(step => ({ url: step.url, selector: step.selector, text: step.text, element_text: step.element_text,
+        narration: {
+          path: this.guideNarrationPath(step.narration_url || step.live_narration_url),
+          range: step.narration_url ? null : step.annotations?.find(item => item.type === 'live_narration'),
+        },
         target: step.annotations?.find((annotation: any) => annotation.type === 'capture_metadata')?.target })) };
     this.sendPlaybackRequest(payload);
   }
@@ -103,6 +149,14 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    * @param payload — any; contrato tipado na assinatura.
    * @returns void.
    */
+  private guideNarrationPath(value?: string | null): string | undefined {
+    if (!value) return undefined;
+    try {
+      const url = new URL(value, location.origin);
+      return url.pathname.startsWith('/api/guides/media/') ? url.pathname : undefined;
+    } catch { return undefined; }
+  }
+
   private sendPlaybackRequest(payload: any): void {
     const runtime = (window as any).chrome?.runtime;
     const extensionId = localStorage.getItem('autoguide_extension_id');

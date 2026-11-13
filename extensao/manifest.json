@@ -14,9 +14,9 @@
   "host_permissions": [
     "<all_urls>"
   ],
-  "icons": { "128": "octor-icon.jpg" },
+  "icons": { "128": "octor-icon.png" },
   "action": {
-    "default_icon": "octor-icon.jpg",
+    "default_icon": "octor-icon.png",
     "default_title": "Abrir OCTOR"
   },
   "background": {
@@ -38,6 +38,9 @@
       ],
       "run_at": "document_start"
     }
+  ],
+  "web_accessible_resources": [
+    { "resources": ["octor-icon.png"], "matches": ["<all_urls>"] }
   ],
   "side_panel": {
     "default_path": "popup.html"

@@ -12,7 +12,7 @@
       .map(id => element.ownerDocument.getElementById(id)?.textContent || '').join(' ');
     return normalize(element.getAttribute('aria-label') || labelled ||
       Array.from(element.labels || []).map(item => item.textContent).join(' ') ||
-      element.getAttribute('placeholder') || element.getAttribute('title') || element.innerText || element.textContent).slice(0, 200);
+      element.getAttribute('placeholder') || element.getAttribute('title') || element.innerText || element.textContent || element.querySelector?.('img[alt],svg title')?.getAttribute('alt') || element.querySelector?.('svg title')?.textContent).slice(0, 200);
   }
   /**
    * Verifica dimensões e estilos computados antes de aceitar um elemento como alvo visível.
@@ -30,12 +30,14 @@
    * @returns expressão calculada/comparada no corpo; candidate; resultado de path.join(...).
    */
   function selector(element) {
+    // IDs gerados pelo React podem mudar a cada abertura da página.
+    const stableId = id => id && !/^_r_[a-z0-9]+_$|^:r[a-z0-9]+:$/i.test(id);
     const doc = element.ownerDocument;
     const unique = /* Confirma que o seletor identifica somente o elemento esperado e trata seletores inválidos. | @param candidate — valor recebido do contexto chamador. | @returns expressão calculada/comparada no corpo; boolean. */ candidate => {
       try { const matches = doc.querySelectorAll(candidate); return matches.length === 1 && matches[0] === element; }
       catch { return false; }
     };
-    if (element.id && unique('#' + CSS.escape(element.id))) return '#' + CSS.escape(element.id);
+    if (stableId(element.id) && unique('#' + CSS.escape(element.id))) return '#' + CSS.escape(element.id);
     const tag = element.tagName.toLowerCase();
     for (const attribute of ['data-testid','data-test','aria-label','name','placeholder']) {
       const value = element.getAttribute(attribute);
@@ -46,7 +48,7 @@
     const path = [];
     for (let node = element; node && node.nodeType === 1; node = node.parentElement) {
       let part = node.tagName.toLowerCase();
-      if (node.id && doc.querySelectorAll('#' + CSS.escape(node.id)).length === 1) {
+      if (stableId(node.id) && doc.querySelectorAll('#' + CSS.escape(node.id)).length === 1) {
         path.unshift('#' + CSS.escape(node.id)); break;
       }
       const siblings = node.parentElement ? Array.from(node.parentElement.children).filter(s => s.tagName === node.tagName) : [];
@@ -74,9 +76,21 @@
   function resolve(step, doc = document) {
     const identity = step.target || {};
     const expected = normalize(identity.label || step.element_text);
+    // O GitHub pode renderizar o mesmo controle em inglês após reabrir a aba.
+    const githubLabels = [
+      ['Criar novo...', 'Create new...', 'Create new'],
+      ['Novo repositório', 'New repository'],
+      ['Criar repositório', 'Create repository'],
+    ];
+    const canonical = value => normalize(value).replace(/…/g, '...').toLowerCase();
+    const equivalents = doc.location?.origin === 'https://github.com'
+      ? githubLabels.find(group => group.some(value => canonical(value) === canonical(expected)))
+      : undefined;
+    const matchesLabel = value => value === expected
+      || equivalents?.some(alias => canonical(alias) === canonical(value));
     const matchesIdentity = /* Compara os atributos disponíveis da identidade gravada com o candidato atual. | @param el — valor recebido do contexto chamador. | @returns expressão calculada/comparada no corpo. */ el => (!identity.tag || el.tagName.toLowerCase() === identity.tag) &&
       (!identity.role || el.getAttribute('role') === identity.role) &&
-      (!expected || label(el) === expected || (!identity.label && label(el).slice(0, 60) === expected));
+      (!expected || matchesLabel(label(el)) || (!identity.label && label(el).slice(0, 60) === expected));
     let selected = [];
     try { selected = Array.from(doc.querySelectorAll(step.selector || ':not(*)')).filter(visible); } catch {}
     const verified = selected.filter(matchesIdentity);

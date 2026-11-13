@@ -4,7 +4,7 @@
 let /* Promise: fila central das alterações da sessão de tutorial entre mensagens concorrentes. */ playbackQueue = Promise.resolve();
 // Inclua aqui apenas origens HTTPS dedicadas à homologação, incluindo a porta se houver.
 const PLAYBACK_TEST_ORIGINS = new Set(globalThis.OctorEnvironment?.playbackTestOrigins ?? []);
-const PLAYBACK_RULE_IDS = [7101, 7102];
+const PLAYBACK_RULE_IDS = [7101, 7102, 7103];
 const PLAYBACK_RESOURCE_TYPES = [
   'main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object',
   'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket', 'webtransport', 'webbundle', 'other',
@@ -18,6 +18,13 @@ function isTestDestination(url) {
 function trainingNarration(narration, sourcePath) {
   const training = /^\/trainings\/(\d+)\/?$/.exec(sourcePath);
   const path = narration?.path;
+  if (/^\/guides\/\d+\/?$/.test(sourcePath) && typeof path === 'string'
+      && /^\/api\/guides\/media\/(?:narrations|capture_audio)\/[a-z0-9_./%-]+$/i.test(path)
+      && !path.includes('..')) {
+    const {start, end} = narration.range || {};
+    const range = Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start ? {start, end} : null;
+    return narration.range && !range ? null : {path, range};
+  }
   if (!training || typeof path !== 'string') return null;
   const prefix = '/api/trainings/' + training[1] + '/versions/';
   if (!path.startsWith(prefix) || !/^\d+\/(?:assets\/[a-f0-9-]+|legacy-media\/\d+\/(?:narration_url|live_narration_url))\/$/.test(path.slice(prefix.length))) return null;
@@ -30,9 +37,18 @@ function trainingNarration(narration, sourcePath) {
 async function protectPlaybackTab(tabId, origins) {
   const escaped = origins.map(origin => origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const scope = { tabIds: [tabId], resourceTypes: PLAYBACK_RESOURCE_TYPES };
+  // O GitHub entrega CSS e JavaScript pelo CDN oficial. A exceção vale só para arquivos estáticos.
+  const githubAssets = origins.includes('https://github.com') ? [{
+    id: PLAYBACK_RULE_IDS[2], priority: 2, action: {type: 'allow'},
+    condition: {
+      tabIds: [tabId], regexFilter: '^https://github[.]githubassets[.]com/',
+      resourceTypes: ['stylesheet', 'script', 'image', 'font'], requestMethods: ['get'],
+    },
+  }] : [];
   await chrome.declarativeNetRequest.updateSessionRules({
     removeRuleIds: PLAYBACK_RULE_IDS,
     addRules: [
+      ...githubAssets,
       { id: PLAYBACK_RULE_IDS[0], priority: 1, action: { type: 'block' }, condition: { ...scope, urlFilter: '*' } },
       { id: PLAYBACK_RULE_IDS[1], priority: 2, action: { type: 'allow' },
         condition: { ...scope, regexFilter: '^(' + escaped.join('|') + ')/', isUrlFilterCaseSensitive: true } },
@@ -83,8 +99,9 @@ async function handlePlayback(message, sender) {
     }
     const steps = message.steps.map((step, index) => {
       let url; try { url = safePlaybackUrl(step.url); } catch { throw new Error('O passo ' + (index+1) + ' tem uma URL inválida. Grave esse passo novamente.'); }
-      if (!isTestDestination(new URL(url))) {
-        throw new Error('O Me guie bloqueou o passo ' + (index + 1) + ' porque o endereço não foi autorizado para testes. Acompanhe o procedimento pelas capturas no OCTOR.');
+      const destination = new URL(url);
+      if (!isTestDestination(destination)) {
+        throw new Error(`O passo ${index + 1} usa ${destination.origin}, que ainda não foi autorizado para testes no Me guie. Informe esse endereço ao responsável pela homologação ou acompanhe o passo pelas capturas no OCTOR.`);
       }
       return {
       url, selector: String(step.selector || '').slice(0, 4000),
@@ -122,7 +139,7 @@ async function handlePlayback(message, sender) {
   }
   // Regras de sessão sobrevivem à suspensão do worker, mas não ao fechamento do navegador.
   const rules = playback.protectedSession ? await chrome.declarativeNetRequest.getSessionRules() : [];
-  const protectedTab = PLAYBACK_RULE_IDS.every(id => rules.some(rule => rule.id === id && rule.condition.tabIds?.includes(playback.tabId)));
+  const protectedTab = PLAYBACK_RULE_IDS.slice(0, 2).every(id => rules.some(rule => rule.id === id && rule.condition.tabIds?.includes(playback.tabId)));
   if (!protectedTab) {
     await chrome.storage.local.remove('playback');
     return { playback: null };

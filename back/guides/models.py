@@ -26,6 +26,8 @@ class Guide(models.Model):
 
     title = models.CharField(max_length=255, default="Novo Guia")
     description = models.TextField(blank=True, default="")
+    # A classificação do criador não autoriza endereços na extensão.
+    playback_environment = models.CharField(max_length=12, choices=[("unclassified", "Não classificado"), ("test", "Homologação"), ("production", "Produção")], default="unclassified")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
     trashed_at = models.DateTimeField(null=True, blank=True)
     starred_by = models.ManyToManyField(User, blank=True, related_name="starred_guides")

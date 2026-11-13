@@ -27,7 +27,7 @@ h2 { font-size: 16px; }
 a { color: inherit; }
 .header { display: flex; align-items: center; gap: 10px; min-height: 48px; margin-bottom: 42px; }
 .logo { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; letter-spacing: .05em; text-decoration: none; }
-.logo img { display: block; border-radius: 50%; border: 1px solid var(--line); }
+.logo img { display: block; object-fit: contain; filter: invert(1); }
 .header-links { display: flex; margin-left: auto; gap: 2px; }
 .header-links a { display: grid; place-items: center; width: 32px; height: 36px; text-decoration: none; font-size: 20px; color: var(--muted); border-radius: 6px; }
 .header-links a:hover { background: var(--surface); color: var(--text); }

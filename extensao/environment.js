@@ -3,5 +3,5 @@ globalThis.OctorEnvironment = Object.freeze({
   appOrigins: ['https://octor.app.br'],
   frontendOrigin: 'https://octor.app.br',
   apiBase: 'https://octor.app.br/api',
-  playbackTestOrigins: [],
+  playbackTestOrigins: ['https://github.com'],
 });

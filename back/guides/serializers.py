@@ -272,6 +272,7 @@ class GuideDetailSerializer(GuideAccessMixin, serializers.ModelSerializer):
     class Meta:
         model = Guide
         fields = [
+            "playback_environment",
             "id",
             "title",
             "description",

@@ -247,6 +247,25 @@ chrome.runtime.onInstalled.addListener(/* Recebe o evento do navegador/Chrome e 
 });
 
 chrome.runtime.onMessage.addListener(/* Recebe o evento do navegador/Chrome e delega ao fluxo registrado neste contexto. | @param message — mensagem recebida entre os contextos da extensão. | @param sender — contexto remetente da mensagem Chrome. | @param sendResponse — callback Chrome para confirmar a mensagem mantendo o canal aberto quando necessário. | @returns boolean. */ (message, sender, sendResponse) => {
+  if (message.action === 'GET_GUIDED_NARRATION') {
+    (async () => {
+      const {playback} = await chrome.storage.local.get('playback');
+      if (!playback || sender.tab?.id !== playback.tabId || message.index !== playback.index) throw new Error();
+      const step = playback.steps[playback.index];
+      if (new URL(sender.url).origin !== new URL(step.url).origin || !step.narration) throw new Error();
+      const api = new URL(DEFAULT_API_BASE);
+      const url = new URL(step.narration.path, api.origin);
+      if (url.origin !== api.origin || !url.pathname.startsWith('/api/')) throw new Error();
+      const response = await recordingApiFetch(DEFAULT_API_BASE, url.pathname.slice(4), {redirect: 'error'});
+      if (!response.ok || !/^(audio\/|video\/webm)/.test(response.headers.get('content-type') || '')) throw new Error();
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!bytes.length || bytes.length > 20 * 1024 * 1024) throw new Error();
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      sendResponse({audio: btoa(binary), mime: response.headers.get('content-type').split(';')[0], range: step.narration.range});
+    })().catch(() => sendResponse({success: false}));
+    return true;
+  }
   if (message.action === 'REFRESH_PLAYBACK_AUDIO_SESSION') {
     if (sender.url !== chrome.runtime.getURL('popup.html')) return false;
     refreshAccessToken(DEFAULT_API_BASE).then(

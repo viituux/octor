@@ -15,14 +15,82 @@
   }
 
   let host, shadow, panel, highlight, status, heading, instruction, previous, next, progress, stepLabel;
-  let reference, referenceStatus, retry;
+  let reference, referenceStatus;
   let session = null, target = null, observer = null, frame = null, /* boolean: bloqueia submissões repetidas enquanto a operação atual aguarda resposta. */ busy = false;
   let lastStep = null, scrolledTarget = null, lastLayoutCheck = 0;
   /**
    * Remove a apresentação do guia e os recursos visuais registrados pela sessão atual.
    * @returns void/undefined; efeitos nas operações do corpo.
    */
+  let listen, audioStatus, voice, audioContext, audioRequest = 0;
+
+  function stopAudio() {
+    audioRequest++;
+    if (voice) {
+      voice.stop();
+      voice.disconnect();
+      voice = undefined;
+    }
+  }
+
+  function updateListenButton(playing = false) {
+    listen.textContent = playing ? '■' : '▶';
+    listen.title = playing ? 'Parar áudio' : 'Ouvir instrução';
+    listen.setAttribute('aria-label', listen.title);
+  }
+
+  async function listenToStep() {
+    if (!session?.steps[session.index]?.narration) return;
+    if (voice) {
+      stopAudio();
+      updateListenButton();
+      return;
+    }
+    const request = ++audioRequest;
+    listen.disabled = true;
+    audioStatus.textContent = 'Carregando narração…';
+    try {
+      // Retoma no clique e decodifica em memória, sem URL blob sujeita à política de mídia do site.
+      audioContext ??= new AudioContext();
+      const resumed = audioContext.resume();
+      const [result] = await Promise.all([
+        chrome.runtime.sendMessage({action: 'GET_GUIDED_NARRATION', index: session.index}),
+        resumed,
+      ]);
+      if (request !== audioRequest) return;
+      if (!result?.audio) throw new Error();
+      const bytes = Uint8Array.from(atob(result.audio), character => character.charCodeAt(0));
+      const buffer = await audioContext.decodeAudioData(bytes.buffer);
+      if (request !== audioRequest) return;
+      const start = result.range?.start ?? 0;
+      const end = Math.min(result.range?.end ?? buffer.duration, buffer.duration);
+      if (end <= start) throw new Error();
+      const source = audioContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioContext.destination);
+      source.onended = () => {
+        if (request !== audioRequest) return;
+        source.disconnect();
+        voice = undefined;
+        updateListenButton();
+      };
+      source.start(0, start, end - start);
+      voice = source;
+      updateListenButton(true);
+      audioStatus.textContent = '';
+    } catch {
+      if (request === audioRequest) audioStatus.textContent = 'Não foi possível tocar a narração. Confira a conexão da extensão com o OCTOR.';
+    } finally {
+      if (request === audioRequest) listen.disabled = false;
+    }
+  }
+
   function cleanup() {
+    stopAudio();
+    if (audioContext) {
+      void audioContext.close().catch(() => {});
+      audioContext = undefined;
+    }
     observer?.disconnect(); observer = null;
     if (frame) cancelAnimationFrame(frame);
     frame = null;
@@ -50,8 +118,14 @@
     if (!session || !host) return;
     const step = session.steps[session.index];
     reference.hidden = !session.referenceUrl;
-    retry.hidden = false;
-    if (location.href !== step.url) {
+    const currentUrl = new URL(location.href);
+    const recordedUrl = new URL(step.url);
+    // Uma barra final pode ser normalizada pelo site. Consultas e âncoras podem identificar outra tela.
+    const samePage = currentUrl.origin === recordedUrl.origin
+      && currentUrl.pathname.replace(/\/$/, '') === recordedUrl.pathname.replace(/\/$/, '')
+      && currentUrl.search === recordedUrl.search
+      && currentUrl.hash === recordedUrl.hash;
+    if (!samePage) {
       target = null; highlight.hidden = true;
       status.textContent = 'Abra a página deste passo para continuar.';
       return;
@@ -68,12 +142,10 @@
       const label = (step.target?.label || step.element_text || '').slice(0, 120);
       const hint = label ? ' Procure por “' + label + '”.' : '';
       status.textContent = (result.ambiguous ? 'Encontrei mais de um elemento parecido.' : 'Ainda não encontrei o elemento deste passo.')
-        + hint + ' Abra o menu correspondente, se necessário, e tente novamente.';
+        + hint + ' Abra o menu correspondente, se necessário.';
       Object.assign(panel.style, {left:'auto', top:'auto', right:'16px', bottom:'16px'});
       return;
     }
-    reference.hidden = true;
-    retry.hidden = true;
     highlight.hidden = false;
     Object.assign(highlight.style, { left: `${rect.left - 4}px`, top: `${rect.top - 4}px`, width: `${rect.width + 8}px`, height: `${rect.height + 8}px` });
     status.textContent = 'Execute a ação e clique em Próximo.';
@@ -105,6 +177,14 @@
    * Monta o painel em Shadow DOM e registra o acompanhamento de layout e navegação.
    * @returns void/undefined; efeitos nas operações do corpo.
    */
+  function iconButton(icon, label, handler) {
+    const node = button(icon, handler);
+    node.className = 'arrow';
+    node.title = label;
+    node.setAttribute('aria-label', label);
+    return node;
+  }
+
   function mount() {
     host = document.createElement('div');
     host.setAttribute('data-autoguide-player', '');
@@ -113,6 +193,22 @@
     shadow = host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
     style.textContent = (globalThis.AutoGuideTheme || '') + `:host{font-family:var(--font-ui,system-ui);color:var(--text-main,#292337)}*{box-sizing:border-box}.highlight{position:fixed;border:3px solid var(--primary,#7426ca);border-radius:8px;box-shadow:0 0 0 5px #7426ca33,0 0 0 9999px #15102655;pointer-events:none}.panel{position:fixed;right:16px;bottom:16px;width:min(360px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;background:white;border:1px solid var(--border-color,#e5deed);border-radius:16px;padding:20px;box-shadow:0 12px 48px #0003;pointer-events:auto;font:14px/1.5 var(--font-ui,system-ui);color:var(--text-main,#292337)}h2{font-size:16px;margin:0 0 8px}p{white-space:pre-wrap;overflow-wrap:anywhere}.status{color:var(--text-muted,#70647d);font-size:12px}.progress{height:4px;background:var(--primary-soft,#f0e7fa);border-radius:8px;overflow:hidden;margin:12px 0}.progress>div{height:100%;background:var(--primary,#7426ca);transition:width .2s}.step-label{color:var(--primary,#7426ca);font-size:11px;font-weight:700;letter-spacing:.8px}.controls{display:flex;gap:8px;flex-wrap:wrap}button{font:inherit;cursor:pointer;border:1px solid var(--border-color,#e5deed);background:var(--primary-soft,#f0e7fa);color:var(--primary,#7426ca);border-radius:8px;padding:8px 10px}button:disabled{opacity:.5;cursor:default}button:focus-visible{outline:3px solid var(--focus-ring,#b88cdd);outline-offset:2px}[hidden]{display:none!important}`;
+    style.textContent += `
+      .panel { width:min(440px, calc(100vw - 24px)); padding:22px; border-radius:22px; color:#0f172a; background:#fff; }
+      .panel h2 { font-size:20px; line-height:1.25; margin:5px 0 12px; }
+      .step-label { color:#0369a1; }
+      .progress { height:6px; background:#dbeafe; }
+      .progress > div { background:#0076dc; }
+      .status { border-top:1px solid #dbeafe; padding-top:10px; color:#334e76; }
+      .controls { background:#eef6ff; width:fit-content; max-width:100%; margin-inline:auto; padding:3px; border-radius:8px; gap:5px; align-items:center; flex-wrap:nowrap; overflow-x:auto; }
+      .controls button { color:#07498a; background:#e0efff; border-color:#c8e2ff; min-height:32px; padding:4px 7px; }
+      .controls .arrow, .controls .octor-return { flex:0 0 32px; width:32px; min-width:32px; min-height:32px; padding:0; font-size:19px; line-height:1; }
+      .controls .octor-return { display:grid; place-items:center; }
+      .octor-return img { display:block; width:26px; height:26px; object-fit:contain; }
+      .controls .listen { background:#0065cc; color:#fff; border-color:#0065cc; font-weight:700; font-size:14px; white-space:nowrap; }
+      .audio-status { color:#334e76; font-size:12px; margin:6px 0 0; }
+      .audio-status:empty { display:none; }
+    `;
     highlight = document.createElement('div'); highlight.className = 'highlight';
     highlight.setAttribute('aria-hidden', 'true');
     panel = document.createElement('section'); panel.className = 'panel';
@@ -122,13 +218,18 @@
     instruction.setAttribute('aria-live', 'polite');
     status = document.createElement('p'); status.className = 'status';
     const controls = document.createElement('div'); controls.className = 'controls';
-    previous = button('Voltar', () => move(-1));
-    next = button('Próximo', () => move(1));
-    retry = button('Tentar novamente', () => { target = null; scrolledTarget = null; locate(); });
+    listen = iconButton('▶', 'Ouvir instrução', listenToStep); listen.classList.add('listen');
+    audioStatus = document.createElement('p'); audioStatus.setAttribute('role', 'status'); audioStatus.className = 'audio-status';
+    previous = button('‹', () => move(-1));
+    previous.className = 'arrow';
+    previous.title = 'Voltar';
+    previous.setAttribute('aria-label', 'Voltar');
+    next = button('›', () => move(1));
+    next.className = 'arrow';
     referenceStatus = document.createElement('p');
     referenceStatus.setAttribute('role', 'status');
     referenceStatus.hidden = true;
-    reference = button('Ver captura no OCTOR', async () => {
+    reference = button('OCTOR', async () => {
       if (!session || reference.disabled) return;
       reference.disabled = true;
       referenceStatus.hidden = true;
@@ -142,8 +243,18 @@
         reference.disabled = false;
       }
     });
-    controls.append(previous, next, retry, reference,
-      button('Abrir página', async () => {
+    reference.title = 'Voltar ao OCTOR';
+    reference.setAttribute('aria-label', 'Voltar ao OCTOR');
+    reference.className = 'octor-return';
+    reference.textContent = '';
+    const brand = document.createElement('img');
+    brand.src = chrome.runtime.getURL('octor-icon.png');
+    brand.alt = '';
+    brand.setAttribute('aria-hidden', 'true');
+    reference.append(brand);
+    controls.append(previous, listen, next,
+      iconButton('↻', 'Repetir narração', () => { stopAudio(); void listenToStep(); }),
+      iconButton('⌂', 'Abrir página do passo', async () => {
         if (!session) return;
         try {
           const result = await chrome.runtime.sendMessage({ action: 'OPEN_PLAYBACK_PAGE', index: session.index });
@@ -154,14 +265,15 @@
           referenceStatus.hidden = false;
         }
       }),
-      button('Encerrar', async () => {
+      reference,
+      iconButton('×', 'Encerrar', async () => {
         try { await chrome.runtime.sendMessage({ action: 'STOP_PLAYBACK' }); cleanup(); }
         catch { status.textContent = 'Não foi possível encerrar. Tente novamente.'; }
       }));
     stepLabel = document.createElement('div'); stepLabel.className = 'step-label';
     const track = document.createElement('div'); track.className = 'progress';
     progress = document.createElement('div'); track.append(progress);
-    panel.append(stepLabel, heading, track, instruction, status, controls, referenceStatus);
+    panel.append(stepLabel, heading, track, instruction, status, controls, audioStatus, referenceStatus);
     shadow.append(style, highlight, panel);
     document.documentElement.append(host);
     // A camada superior evita que transformações dos ancestrais do site desloquem as coordenadas fixas.
@@ -191,14 +303,18 @@
     stepLabel.textContent = 'PASSO ' + (playback.index+1) + ' DE ' + playback.steps.length;
     progress.style.width = ((playback.index+1)/playback.steps.length*100) + '%';
     instruction.textContent = step.text;
-    if (step.narration) {
-      const audioHint = document.createElement('small');
-      audioHint.textContent = 'Para ouvir a narração deste passo, abra o painel lateral da extensão OCTOR.';
-      instruction.append(document.createElement('br'), audioHint);
+    if (stepChanged) {
+      stopAudio();
+      updateListenButton();
+      listen.disabled = !step.narration;
+      audioStatus.textContent = step.narration ? '' : 'Este passo está sem narração.';
     }
     previous.disabled = playback.index === 0 || busy;
     next.disabled = busy;
-    next.textContent = playback.index === playback.steps.length - 1 ? 'Concluir' : 'Próximo / Pular';
+    const finalStep = playback.index === playback.steps.length - 1;
+    next.textContent = finalStep ? '✓' : '›';
+    next.title = finalStep ? 'Concluir' : 'Próximo';
+    next.setAttribute('aria-label', next.title);
     locate();
     if (lastStep !== playback.index) {
       lastStep = playback.index;

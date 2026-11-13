@@ -43,3 +43,8 @@
 @media screen{.editor-shell,.paper{background:var(--ui-f8fafc)}.topbar{background:var(--ui-ffffff)}.outline{background:var(--ui-f1f5f9)}.step-card{background:var(--ui-ffffff)}.outline nav button.active{background:var(--ui-e0f2fe);color:var(--ui-0369a1)}.step-card.selected{border-color:var(--ui-7dd3fc)}.actions .primary{background:var(--ui-0284c7);color:var(--on-primary)}.editor-shell button{background:var(--ui-ffffff);color:var(--ui-475569)}.brand{color:var(--ui-0f172a)}.step-ai textarea,.pdf-context textarea{background:var(--ui-ffffff);color:var(--ui-0f172a)}}
 
 .manual-section-heading{font-size:22px;color:var(--ui-0369a1);border-bottom:1px solid var(--ui-e2e8f0);padding-bottom:12px;margin:8px 0 22px}@media print{.manual-section-heading{color:#0f172a;font-size:18pt;break-after:avoid}}
+.playback-environment { margin: 0 0 20px; padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; }
+.playback-environment legend { padding: 0 6px; font-weight: 600; }
+.playback-environment button { margin: 0 6px 6px 0; }
+.playback-environment button[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.playback-environment p { margin: 4px 0 0; color: var(--text-muted); }
