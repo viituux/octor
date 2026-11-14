@@ -27,6 +27,19 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 # Dependência: contratos e funções do módulo .models reutilizados neste fluxo.
 from .models import GoogleAccount
+from urllib.parse import urlsplit
+
+
+def google_picture(claims):
+    """Aceita somente a foto HTTPS presente na credencial Google verificada."""
+    picture = claims.get("picture")
+    if not isinstance(picture, str) or len(picture) > 2048:
+        return ""
+    try:
+        url = urlsplit(picture)
+    except ValueError:
+        return ""
+    return picture if url.scheme == "https" and url.hostname in {"lh3.googleusercontent.com", "lh4.googleusercontent.com", "lh5.googleusercontent.com", "lh6.googleusercontent.com"} and not url.username else ""
 # Dependência: contratos e funções do módulo .serializers reutilizados neste fluxo.
 from .serializers import UserSerializer
 
@@ -148,12 +161,16 @@ class GoogleLoginView(APIView):
                     return Response({"detail": "Não foi possível validar sua conta Google. Tente novamente."}, status=400)
                 if account:
                     user = account.user
+                    picture = google_picture(claims)
+                    if picture and picture != account.picture_url:
+                        account.picture_url = picture
+                        account.save(update_fields=["picture_url"])
                     if user.is_active and consent_version:
                         accept_training_consent(user, consent_version, 'google')
                 else:
                     user = User.objects.create_user(username="google_" + uuid.uuid4().hex[:20], email=claims["email"].lower(),
                                                     first_name=str(claims.get("given_name", ""))[:150], last_name=str(claims.get("family_name", ""))[:150])
-                    GoogleAccount.objects.create(user=user, subject=claims["sub"], email=claims["email"])
+                    GoogleAccount.objects.create(user=user, subject=claims["sub"], email=claims["email"], picture_url=google_picture(claims))
                     accept_training_consent(user, consent_version, 'google')
                 if not user.is_active:
                     return Response({"detail": "Esta conta está desativada."}, status=403)
@@ -188,7 +205,11 @@ class GoogleLinkView(APIView):
                 current = GoogleAccount.objects.filter(user=request.user).first()
                 if current and current.subject != claims["sub"]:
                     return Response({"detail": "Seu usuário já está vinculado a outra conta Google."}, status=409)
-                GoogleAccount.objects.get_or_create(user=request.user, defaults={"subject": claims["sub"], "email": claims["email"]})
+                account, _ = GoogleAccount.objects.get_or_create(user=request.user, defaults={"subject": claims["sub"], "email": claims["email"]})
+                picture = google_picture(claims)
+                if picture:
+                    account.picture_url = picture
+                    account.save(update_fields=["picture_url"])
                 return Response(UserSerializer(request.user).data)
         except IntegrityError:
             return Response({"detail": "A conta Google já está vinculada. Atualize a página."}, status=409)

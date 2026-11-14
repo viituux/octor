@@ -1,3 +1,4 @@
+import {ProfileAvatarComponent} from '../shared/profile-avatar.component';
 import { OctorLoadingComponent } from '../shared/octor-loading.component';
 import {OctorLogoComponent} from '../shared/octor-logo.component';
 import {AISettingsComponent} from '../login/ai-settings.component';
@@ -41,7 +42,7 @@ import { GuideService, Guide, Workspace, TeamMember, TeamInvite, UserSearchResul
 import { AuthService } from '../../services/auth.service';
 
 type Section = 'drafts'|'published'|'shared'|'starred'|'team'|'trash'|'settings'|'updates'|'search';
-@Component({selector:'app-guide-list',standalone:true,imports:[OctorMediaDirective,OctorLoadingComponent,AISettingsComponent,OctorLogoComponent,OnboardingTourComponent,ThemeToggleComponent,NotificationBellComponent,OctorIconComponent,CommonModule,FormsModule,RouterModule],templateUrl:'./guide-list.component.html',styleUrls:['./guide-list.component.css']})
+@Component({selector:'app-guide-list',standalone:true,imports:[ProfileAvatarComponent,OctorMediaDirective,OctorLoadingComponent,AISettingsComponent,OctorLogoComponent,OnboardingTourComponent,ThemeToggleComponent,NotificationBellComponent,OctorIconComponent,CommonModule,FormsModule,RouterModule],templateUrl:'./guide-list.component.html',styleUrls:['./guide-list.component.css']})
 export class GuideListComponent implements OnInit, OnDestroy {
   memberQuery='';memberResults:UserSearchResult[]=[];memberSearchLoading=false;memberSearchDone=false;memberSearchError='';memberSearchVersion=0;
   guides:Guide[]=[];workspaces:Workspace[]=[];members:TeamMember[]=[];invitations:TeamInvite[]=[];

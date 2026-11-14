@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 # Dependência: modelos, consultas e transações do banco relacional.
 from django.db import transaction
+from django.db.models import OuterRef, Subquery
 # Dependência: modelos, consultas e transações do banco relacional.
 from django.db.models.deletion import ProtectedError
 # Dependência: contratos e funções do módulo .models reutilizados neste fluxo.
@@ -34,6 +35,12 @@ class GuideViewSet(viewsets.ModelViewSet):
     # Retorno: resultado de query.filter(...).
     def get_queryset(self):
         query = accessible_guides(self.request.user).select_related('owner','workspace').prefetch_related('starred_by','shares')
+        if self.action == 'list':
+            first_step = Step.objects.filter(guide_id=OuterRef('pk')).order_by('order', 'id')
+            query = query.annotate(
+                first_step_text=Subquery(first_step.values('text')[:1]),
+                first_step_annotations=Subquery(first_step.values('annotations')[:1]),
+            )
         if self.action in ['restore','permanent_delete'] or self.request.query_params.get('trash') == '1':
             return query.filter(owner=self.request.user, trashed_at__isnull=False)
         if self.action == 'list' and self.request.query_params.get('include_trash') == '1':

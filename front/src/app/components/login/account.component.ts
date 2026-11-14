@@ -3,7 +3,7 @@ import {OctorLogoComponent} from '../shared/octor-logo.component';
 /**
  * Dependência ({Component,OnInit,NgZone}): decoradores, injeção, signals e ciclo de vida dos componentes Angular.
  */
-import {Component,OnInit,NgZone} from '@angular/core';
+import {Component,OnInit,OnDestroy,NgZone} from '@angular/core';
 /**
  * Dependência ({CommonModule}): diretivas e apresentação compartilhada dos templates Angular.
  */
@@ -29,7 +29,154 @@ import {GoogleSignInComponent} from './google-sign-in.component';
  */
 import {OctorIconComponent} from '../shared/octor-icon.component';
 @Component({selector:'app-account',standalone:true,imports:[OctorLogoComponent,CommonModule,FormsModule,RouterModule,GoogleSignInComponent,OctorIconComponent],templateUrl:'./account.component.html',styleUrls:['./account.component.css']})
-export class AccountComponent implements OnInit{
+export class AccountComponent implements OnInit, OnDestroy {
+ private readonly photoLimit = 5 * 1024 * 1024;
+ private cropImage: HTMLImageElement | null = null;
+ private avatarUrl = '';
+ private hideGooglePhoto = false;
+ private destroyed = false;
+ photoFailed = false;
+ photoBusy = false;
+ photoError = '';
+ cropZoom = 1;
+ cropX = 50;
+ cropY = 50;
+ toast = '';
+ private toastTimer?: ReturnType<typeof setTimeout>;
+
+ get googleAccount() { return !!this.auth.currentUser()?.google_email; }
+ get photo() {
+  return this.photoFailed ? '' : this.avatarUrl || (this.hideGooglePhoto ? '' : this.auth.currentUser()?.google_picture || '');
+ }
+
+ private notify(text: string) {
+  clearTimeout(this.toastTimer);
+  this.toast = text;
+  this.toastTimer = setTimeout(() => this.toast = '', 4500);
+ }
+
+ private loadAvatar() {
+  this.photoBusy = true;
+  this.auth.getAvatar().subscribe({
+   next: async blob => {
+    if (blob.type.includes('application/json')) {
+     try { if (!this.destroyed) this.hideGooglePhoto = JSON.parse(await blob.text()).hidden === true; }
+     catch { this.photoError = 'Não foi possível carregar a foto do perfil.'; }
+    } else if (blob.size && !this.destroyed) {
+     this.setAvatar(blob);
+    }
+    this.photoBusy = false;
+   },
+   error: () => {
+    this.photoBusy = false;
+    this.photoError = 'Não foi possível carregar a foto do perfil.';
+   }
+  });
+ }
+
+ private setAvatar(blob?: Blob) {
+  URL.revokeObjectURL(this.avatarUrl);
+  this.avatarUrl = blob ? URL.createObjectURL(blob) : '';
+  this.photoFailed = false;
+ }
+
+ /** Carrega a imagem escolhida e abre o recorte somente após a decodificação. */
+ async selectPhoto(event: Event, dialog: HTMLDialogElement, canvas: HTMLCanvasElement) {
+  const control = event.target as HTMLInputElement;
+  const file = control.files?.[0];
+  control.value = '';
+  if (!file || this.photoBusy) return;
+  this.photoError = '';
+  if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > this.photoLimit) {
+   this.photoError = 'Selecione uma imagem JPG, PNG ou WebP de até 5 MB.';
+   return;
+  }
+  this.photoBusy = true;
+  const url = URL.createObjectURL(file);
+  try {
+   const image = new Image();
+   image.src = url;
+   await image.decode();
+   if (this.destroyed || !dialog.isConnected) return;
+   this.cropImage = image;
+   this.cropZoom = 1;
+   this.cropX = this.cropY = 50;
+   this.drawCrop(canvas);
+   dialog.showModal();
+  } catch {
+   this.photoError = 'Não foi possível abrir essa imagem.';
+  } finally {
+   URL.revokeObjectURL(url);
+   this.photoBusy = false;
+  }
+ }
+
+ /** Desenha a área selecionada diretamente na resolução enviada à API. */
+ drawCrop(canvas: HTMLCanvasElement) {
+  const image = this.cropImage;
+  const context = canvas.getContext('2d');
+  if (!image || !context) return;
+  const size = Math.min(image.naturalWidth, image.naturalHeight) / this.cropZoom;
+  const x = (image.naturalWidth - size) * this.cropX / 100;
+  const y = (image.naturalHeight - size) * this.cropY / 100;
+  context.clearRect(0, 0, 512, 512);
+  context.drawImage(image, x, y, size, size, 0, 0, 512, 512);
+ }
+
+ savePhoto(dialog: HTMLDialogElement, canvas: HTMLCanvasElement) {
+  if (this.photoBusy) return;
+  this.photoBusy = true;
+  this.photoError = '';
+  canvas.toBlob(blob => {
+   if (!blob || this.destroyed) {
+    this.photoBusy = false;
+    this.photoError = 'Não foi possível preparar o recorte.';
+    return;
+   }
+   this.auth.updateAvatar(blob).subscribe({
+    next: () => {
+     if (!this.destroyed) {
+      this.setAvatar(blob);
+      dialog.close();
+      this.notify('Foto atualizada');
+     }
+     this.photoBusy = false;
+    },
+    error: () => {
+     this.photoBusy = false;
+     this.photoError = 'Não foi possível enviar a foto. Tente novamente.';
+    }
+   });
+  }, 'image/png');
+ }
+
+ removePhoto() {
+  if (this.photoBusy || !this.photo) return;
+  this.photoBusy = true;
+  this.photoError = '';
+  this.auth.removeAvatar().subscribe({
+   next: () => {
+    if (this.destroyed) return;
+    this.hideGooglePhoto = true;
+    this.setAvatar();
+    this.photoBusy = false;
+    this.notify('Foto removida');
+   },
+   error: () => {
+    this.photoBusy = false;
+    this.photoError = 'Não foi possível remover a foto. Tente novamente.';
+   }
+  });
+ }
+
+ clearCrop() { this.cropImage = null; }
+
+ ngOnDestroy() {
+  this.destroyed = true;
+  clearTimeout(this.toastTimer);
+  URL.revokeObjectURL(this.avatarUrl);
+ }
+
  section:'profile'|'security'|'connections'='profile';/* boolean: diferencia carga inicial, estado vazio e conteúdo já recebido. */ loading=true;saving=false;loadError='';private statusMessage='';error='';errors:Record<string,string>={};
  firstName='';lastName='';username='';email='';profilePassword='';emailPassword='';currentPassword='';newPassword='';confirmation='';revokePassword='';showPassword=false;
  profileProof:{credential:string;challenge:string}|null=null;emailProof:{credential:string;challenge:string}|null=null;passwordProof:{credential:string;challenge:string}|null=null;revokeProof:{credential:string;challenge:string}|null=null;
@@ -63,12 +210,12 @@ export class AccountComponent implements OnInit{
   * Compara os campos de nome editados com os dados carregados da conta.
   * @returns expressão calculada/comparada no corpo.
   */
- get nameChanged(){return this.username!==this.auth.currentUser()?.username;}
+ get nameChanged(){return !this.googleAccount && this.username.trim()!==this.auth.currentUser()?.username;}
  /**
   * Verifica se o formulário de perfil contém alterações ainda não persistidas.
   * @returns expressão calculada/comparada no corpo.
   */
- get profileDirty(){const u=this.auth.currentUser();return !!u&&(this.firstName!==u.first_name||this.lastName!==(u.last_name||'')||this.username!==u.username);}
+ get profileDirty(){const u=this.auth.currentUser();return !!u&&(this.firstName.trim()!==(u.first_name||'')||this.lastName.trim()!==(u.last_name||'')||this.nameChanged);}
  /**
   * Verifica se o e-mail editado difere do valor recebido da API.
   * @returns expressão calculada/comparada no corpo.
@@ -88,7 +235,7 @@ export class AccountComponent implements OnInit{
   * Executa a etapa `load` do fluxo de account.component.ts; os retornos abaixo identificam o contrato entregue ao chamador.
   * @returns void/undefined; efeitos nas operações do corpo.
   */
- load(){this.loading=true;this.loadError='';this.auth.me().subscribe({next:/* Aplica a resposta assíncrona ao estado desta operação no contexto do componente. | @param u — valor recebido do contexto chamador. | @returns void/undefined; efeitos nas operações do corpo. */ u=>{this.fill(u);this.loading=false;},error:/* Trata a falha assíncrona e mantém a mensagem/estado funcional desta operação. | @param e — evento ou falha recebida, conforme o tipo declarado e o uso no corpo. | @returns void/undefined; efeitos nas operações do corpo. */ e=>{this.loading=false;if(e.status===401){this.auth.logout();this.router.navigate(['/login'],{queryParams:{returnUrl:'/account'}});}else this.loadError='Não foi possível carregar sua conta. Tente novamente.';}});}
+ load(){this.loading=true;this.loadError='';this.auth.me().subscribe({next:/* Aplica a resposta assíncrona ao estado desta operação no contexto do componente. | @param u — valor recebido do contexto chamador. | @returns void/undefined; efeitos nas operações do corpo. */ u=>{this.fill(u);this.loading=false;this.loadAvatar();},error:/* Trata a falha assíncrona e mantém a mensagem/estado funcional desta operação. | @param e — evento ou falha recebida, conforme o tipo declarado e o uso no corpo. | @returns void/undefined; efeitos nas operações do corpo. */ e=>{this.loading=false;if(e.status===401){this.auth.logout();this.router.navigate(['/login'],{queryParams:{returnUrl:'/account'}});}else this.loadError='Não foi possível carregar sua conta. Tente novamente.';}});}
  /**
   * Preenche o formulário local com os dados de perfil retornados pela API.
   * @param u — User; contrato tipado na assinatura.
@@ -121,7 +268,7 @@ export class AccountComponent implements OnInit{
   * Envia os campos do perfil para validação/persistência no servidor.
   * @returns void/undefined.
   */
- saveProfile(){if(this.saving||!this.profileDirty)return;this.begin();this.auth.updateProfile({first_name:this.firstName.trim(),last_name:this.lastName.trim(),username:this.username.trim(),current_password:this.profilePassword,...(this.profileProof||{})}).subscribe({next:/* Aplica a resposta assíncrona ao estado desta operação no contexto do componente. | @param u — valor recebido do contexto chamador. | @returns void/undefined; efeitos nas operações do corpo. */ u=>{this.fill(u);this.saving=false;this.clearSecrets();this.message='Perfil atualizado.';},error:/* Trata a falha assíncrona e mantém a mensagem/estado funcional desta operação. | @param e — evento ou falha recebida, conforme o tipo declarado e o uso no corpo. | @returns resultado de this.failure(...). */ e=>this.failure(e)});}
+ saveProfile(){if(this.saving||!this.profileDirty)return;this.begin();this.auth.updateProfile({first_name:this.firstName.trim(),last_name:this.lastName.trim(),...(!this.googleAccount ? {username:this.username.trim()} : {}),current_password:this.profilePassword,...(this.profileProof||{})}).subscribe({next:/* Aplica a resposta assíncrona ao estado desta operação no contexto do componente. | @param u — valor recebido do contexto chamador. | @returns void/undefined; efeitos nas operações do corpo. */ u=>{this.fill(u);this.saving=false;this.clearSecrets();this.notify('Perfil salvo');},error:/* Trata a falha assíncrona e mantém a mensagem/estado funcional desta operação. | @param e — evento ou falha recebida, conforme o tipo declarado e o uso no corpo. | @returns resultado de this.failure(...). */ e=>this.failure(e)});}
  /**
   * Envia o novo e-mail com a comprovação de identidade exigida pelo servidor.
   * @returns void/undefined.

@@ -79,3 +79,49 @@ progress{display:block;width:100%;height:12px;accent-color:var(--ui-0284c7);marg
 
 .ranking-position{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
 .ranking-position img{object-fit:contain}
+
+button, input, select { border-radius:8px; }
+th:is(:not(:first-child)), td:is(:not(:first-child)) { font-variant-numeric:tabular-nums; }
+a { font-size:max(14px, 1em); }
+
+.refresh-list { min-width: 42px; font-size: 20px; }
+.empty-symbol { display: block; color: var(--accent); font-size: 22px; }
+.dashboard-grid { align-items: start; }
+.line-chart text { font-size: 13px; }
+
+.compact-filters {
+  display:flex; align-items:flex-end; flex-wrap:wrap; gap:8px 16px;
+  min-width:0; margin:0 0 16px; padding:0; border:0;
+}
+.compact-filters input[type=number] { max-width:120px; }
+.training-directory tbody tr { position:relative; }
+.training-directory tbody tr:is(:hover,:focus-within) { background:var(--bg-sidebar); }
+.training-directory .training-name a { font-weight:600; }
+.training-directory .training-name a::after { content:""; position:absolute; inset:0; }
+.training-directory .numeric { text-align:right; font-variant-numeric:tabular-nums; }
+.directory-progress { display:inline-flex; align-items:center; justify-content:flex-end; gap:8px; }
+.directory-progress span { min-width:4ch; }
+.directory-progress progress { width:56px; height:5px; accent-color:var(--accent); }
+.training-state { display:inline-block; padding:3px 8px; border-radius:999px; background:var(--bg-sidebar); color:var(--text-muted); }
+.training-state.published { background:#E7F6EC; color:#166534; }
+.dashboard-grid { align-items:stretch; }
+.metrics article :is(span,small), .dashboard-grid .panel :is(.muted,small),
+.training-page .comment small { font-size:13px; color:var(--text-muted); }
+.training-account { position:relative; margin-left:auto; flex:none; }
+.training-account summary {
+  cursor:pointer; display:grid; place-items:center; width:36px; height:36px;
+  background:var(--accent-soft); color:var(--accent-soft-text); font-weight:600;
+  border-radius:50%; overflow:hidden; list-style:none;
+}
+.training-account summary::-webkit-details-marker { display:none; }
+.training-account summary img { width:100%; height:100%; object-fit:cover; }
+.training-account-menu {
+  position:absolute; right:0; top:calc(100% + 8px); z-index:10;
+  min-width:150px; display:grid; padding:4px; border:1px solid var(--border-color);
+  border-radius:10px; background:var(--bg-surface); box-shadow:var(--shadow-card);
+}
+.training-account-menu :is(a,button) {
+  display:block; padding:8px 10px; text-align:left; white-space:nowrap;
+  font-size:13px; color:var(--text-main); background:transparent; border:0;
+}
+.training-account-menu :is(a,button):hover { background:var(--bg-sidebar); }

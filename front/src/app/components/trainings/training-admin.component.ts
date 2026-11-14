@@ -1,3 +1,4 @@
+import {TrainingPeriodComponent,lastThirtyDays} from './training-period.component';
 import { OctorLoadingComponent } from '../shared/octor-loading.component';
 import {DialogService} from '../../services/dialog.service';
 /** Gestão do conteúdo, quiz versionado, participantes e resultados autorizados pela API. */
@@ -12,13 +13,13 @@ import {TrainingNavComponent} from './training-nav.component';
 import {StepCaptureComponent} from '../guide-editor/step-capture.component';
 import {StepNarrationComponent} from '../guide-editor/step-narration.component';
 
-@Component({standalone:true,imports:[OctorLoadingComponent,CommonModule,FormsModule,RouterModule,TrainingNavComponent,StepCaptureComponent,StepNarrationComponent],
-  templateUrl:'./training-admin.component.html',styleUrls:['./trainings.css']})
+@Component({standalone:true,imports:[TrainingPeriodComponent,OctorLoadingComponent,CommonModule,FormsModule,RouterModule,TrainingNavComponent,StepCaptureComponent,StepNarrationComponent],
+  templateUrl:'./training-admin.component.html',styleUrls:['./trainings.css','./training-filters.css']})
 export class TrainingAdminComponent implements OnInit,OnDestroy {
   id=0;view:'list'|'edit'='list';items:any[]=[];guides:Guide[]=[];training:Training|null=null;
   loading=true;busy=false;error='';notice='';title='';description='';guideId:number|null=null;
-  emails='';inspection:any=null;start='';end='';rating='';
-  minScore='';rankVersion='';quizReviewed=false;
+  emails='';inspection:any=null;private initialPeriod=lastThirtyDays();start=this.initialPeriod.start;end=this.initialPeriod.end;rating='';
+  rankVersion='';quizReviewed=false;
   suggestingQuiz = false;
   quizSuggestionError = '';
   quizSuggestionNotice = '';
@@ -42,7 +43,7 @@ export class TrainingAdminComponent implements OnInit,OnDestroy {
   get validQuiz(){return this.questions.length===5&&this.questions.every(q=>q.statement.trim()&&q.alternatives.length===4&&q.alternatives.every(a=>a.text.trim())&&q.alternatives.filter(a=>a.correct).length===1&&new Set(q.alternatives.map(a=>a.text.trim().toLowerCase())).size===4);}
   constructor(private service:TrainingService,private guidesService:GuideService,private route:ActivatedRoute,private router:Router,private dialogs:DialogService){}
   ngOnInit(){this.id=Number(this.route.snapshot.paramMap.get('id'))||0;this.view=this.route.snapshot.data['editor']?'edit':'list';this.load();}
-  filters(){return {start:this.start,end:this.end,rating:this.rating,min_score:this.minScore,version:this.rankVersion};}
+  filters(){return {start:this.start,end:this.end,rating:this.rating,version:this.rankVersion};}
   /** Carrega apenas guias elegíveis e os dados administrativos autorizados pela API. */
   async load(){
     this.loading=true;this.error='';
@@ -129,10 +130,23 @@ export class TrainingAdminComponent implements OnInit,OnDestroy {
     try{this.inspection=await firstValueFrom(this.service.inspect(this.id,user));setTimeout(()=>document.getElementById('participant-details')?.focus(),0);}
     catch(e){this.error=trainingError(e);}finally{this.busy=false;}
   }
+  private filterVersion=0;
   async applyFilters(){
-    if(this.busy)return;this.busy=true;this.error='';
-    try{if(this.view==='list')this.items=await firstValueFrom(this.service.adminList(this.filters()));else this.training=await firstValueFrom(this.service.adminGet(this.id,this.filters()));}
-    catch(e){this.error=trainingError(e);}finally{this.busy=false;}
+    const version=++this.filterVersion;
+    this.error='';
+    const list=this.view==='list';
+    const filters=this.filters();
+    try {
+      if(list) {
+        const items=await firstValueFrom(this.service.adminList(filters));
+        if(version===this.filterVersion) this.items=items;
+      } else {
+        const training=await firstValueFrom(this.service.adminGet(this.id,filters));
+        if(version===this.filterVersion) this.training=training;
+      }
+    } catch(e) {
+      if(version===this.filterVersion) this.error=trainingError(e);
+    }
   }
   /** Liberação explícita, registrada por participante; não apaga o histórico. */
   async allowRetry(user:number){

@@ -51,6 +51,7 @@ export interface Guide {
   language: string;
   step_count?: number;
   first_step_screenshot?: string;
+  first_step_title?: string | null;
   steps?: Step[];
   created_at: string;
   updated_at: string;

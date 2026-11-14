@@ -1,0 +1,13 @@
+
+.training-filter {
+  display:grid; gap:4px; margin:0; font-weight:600; line-height:1.6; font-size:13px; color:var(--text-muted);
+}
+.training-filter :is(select,input):not([type=radio]):not([type=checkbox]) {
+  box-sizing:border-box; display:block; min-height:42px; width:auto;
+  max-width:min(260px,80vw); margin:0; padding:8px 12px;
+  border:1px solid var(--ui-cbd5e1); border-radius:8px;
+  background:var(--ui-ffffff); color:var(--ui-0f172a); font:13px var(--font-ui);
+}
+.training-filter :is(select,input):focus-visible {
+  outline:3px solid var(--focus-ring); outline-offset:2px;
+}

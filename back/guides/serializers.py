@@ -304,6 +304,7 @@ class GuideListSerializer(GuideAccessMixin, serializers.ModelSerializer):
     owner_username = serializers.CharField(source="owner.username", read_only=True)
     step_count = serializers.IntegerField(source="steps.count", read_only=True)
     first_step_screenshot = serializers.SerializerMethodField()
+    first_step_title = serializers.SerializerMethodField()
 
     class Meta:
         model = Guide
@@ -318,10 +319,20 @@ class GuideListSerializer(GuideAccessMixin, serializers.ModelSerializer):
             "owner_username",
             "step_count",
             "first_step_screenshot",
+            "first_step_title",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "trashed_at", "created_at", "updated_at"]
+
+    def get_first_step_title(self, obj):
+        for annotation in getattr(obj, 'first_step_annotations', None) or []:
+            if isinstance(annotation, dict) and annotation.get('type') == 'editor_step_title':
+                title = annotation.get('title')
+                if isinstance(title, str) and title.strip():
+                    return title.strip()
+        text = (getattr(obj, 'first_step_text', None) or '').strip()
+        return text.splitlines()[0] if text else None
 
     # Calcula o campo `first_step_screenshot` de GuideListSerializer usando o objeto e o contexto disponíveis.
     # Parâmetros — obj: registro que está sendo serializado.

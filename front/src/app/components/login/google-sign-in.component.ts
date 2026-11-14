@@ -64,7 +64,7 @@ export class GoogleSignInComponent implements OnInit,OnDestroy {
  submitting = false;
  @ViewChild('trainingTerm') trainingTerm?: TrainingConsentComponent;
  @ViewChild('buttonHost',{static:true}) buttonHost!:ElementRef<HTMLDivElement>;
- enabled=false;loaded=false;message='';retry=false;private destroyed=false;private challenge='';private request?:Subscription;
+ enabled=false;loaded=false;message='';retry=false;private resize?:ResizeObserver;private destroyed=false;private challenge='';private request?:Subscription;
  /**
   * Recebe as dependências e prepara o estado inicial da instância conforme o ciclo de injeção Angular.
   * @param auth — AuthService; contrato tipado na assinatura.
@@ -81,13 +81,14 @@ export class GoogleSignInComponent implements OnInit,OnDestroy {
   * Libera os recursos mantidos pelo componente ao sair da tela, conforme os timers, listeners e objetos registrados neste fluxo.
   * @returns void.
   */
- ngOnDestroy():void {this.destroyed=true;this.pendingRegistration=null;this.request?.unsubscribe();}
+ ngOnDestroy():void {this.destroyed=true;this.resize?.disconnect();this.pendingRegistration=null;this.request?.unsubscribe();}
  /**
   * Solicita o desafio de uso único e prepara o botão Google para a tentativa atual.
   * @returns Promise<void>.
   */
  async prepare():Promise<void>{
   this.retry=false;this.message='';this.pendingRegistration=null;this.acceptedVersion='';this.challenge='';
+  this.resize?.disconnect();
   this.buttonHost.nativeElement.replaceChildren();
   try {
    const config=await firstValueFrom(this.auth.googleConfig());this.enabled=config.enabled;this.loaded=true;
@@ -98,7 +99,19 @@ export class GoogleSignInComponent implements OnInit,OnDestroy {
    google.accounts.id.initialize({client_id:config.client_id,nonce:attempt.nonce,auto_select:false,callback:(response:{credential:string})=>this.zone.run(()=>{
     if(this.challenge===attempt.challenge) this.finish(response.credential);
    })});
-   google.accounts.id.renderButton(this.buttonHost.nativeElement,{type:'standard',theme:this.buttonTheme,size:'large',text:this.mode==='link'?'continue_with':'signin_with',locale:'pt-BR',width:this.mode==='login'?240:300});
+   const host=this.buttonHost.nativeElement;
+   let previousWidth=0;
+   const render=()=>{
+    const width=this.mode==='login' ? Math.min(400,Math.floor(host.clientWidth)) : 300;
+    if(!width || width===previousWidth) return;
+    previousWidth=width;
+    host.replaceChildren();
+   google.accounts.id.renderButton(this.buttonHost.nativeElement,{type:'standard',theme:this.buttonTheme,size:'large',text:this.mode==='link'||this.isRegistering?'continue_with':'signin_with',locale:'pt-BR',width});
+   };
+   render();
+   this.resize?.disconnect();
+   this.resize=new ResizeObserver(render);
+   this.resize.observe(host);
   }catch(error:any){if(!this.destroyed){this.loaded=true;this.message=error?.message || 'Google indisponível.';this.retry=true;}}
  }
  /**

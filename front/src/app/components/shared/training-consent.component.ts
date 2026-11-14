@@ -26,13 +26,13 @@ interface TrainingTerm {
   styles: [`
     :host { display: block; margin: 12px 0; color: var(--text-main); }
     :host:empty { display: none; }
-    .term { padding: var(--training-term-padding, 10px); border: 1px solid var(--border-color); border-radius: 8px; background: var(--training-term-bg, transparent); }
+    .term { padding: var(--training-term-padding, 10px); border: 1px solid var(--training-term-border,var(--border-color)); border-radius: 8px; background: var(--training-term-bg, transparent); }
     p, label, summary { font-size: .85rem; line-height: 1.5; }
     p { margin: 0 0 8px; }
     details p { margin-top: 8px; }
-    summary { cursor: pointer; font-weight: 600; }
+    summary { cursor: pointer; font-weight: 600; color:var(--training-term-link,inherit); }
     label { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; }
-    input { margin-top: 3px; }
+    input { margin-top: 2px; width:18px; height:18px; flex:none; accent-color:var(--accent); }
   `],
 })
 export class TrainingConsentComponent implements OnInit {

@@ -24,6 +24,7 @@ class UserSettings(models.Model):
         ("elevenlabs", "ElevenLabs"),
     ]
 
+    avatar = models.BinaryField(null=True, editable=False)
     session_version = models.PositiveIntegerField(default=0)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="settings")
     llm_provider = models.CharField(max_length=30, choices=LLM_PROVIDERS, default="gemini")
@@ -58,6 +59,7 @@ def create_or_update_user_settings(sender, instance, created, **kwargs):
 
 class GoogleAccount(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="google_account")
+    picture_url = models.URLField(max_length=2048, blank=True, default="")
     subject = models.CharField(max_length=255, unique=True)
     email = models.EmailField()
     created_at = models.DateTimeField(auto_now_add=True)

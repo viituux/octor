@@ -3,7 +3,7 @@ from .notifications import NotificationListView, NotificationReadView
 from .onboarding import OnboardingView
 # Rotas do módulo: relacionam os caminhos HTTP às views; os prefixos são compostos pelas URLs centrais da aplicação.
 # Dependência: contratos e funções do módulo .account_settings reutilizados neste fluxo.
-from .account_settings import ProfileView, SecurityView, RevokeOtherSessionsView
+from .account_settings import AvatarView, ProfileView, SecurityView, RevokeOtherSessionsView
 # Dependência: contratos e funções do módulo .sessions reutilizados neste fluxo.
 from .sessions import AccountRefreshView, ExtensionSessionView, LogoutView
 # Dependência: contratos e funções do módulo .google_auth reutilizados neste fluxo.
@@ -24,6 +24,7 @@ urlpatterns = [
     path("notifications/", NotificationListView.as_view()),
     path("notifications/read-all/", NotificationReadView.as_view()),
     path("notifications/<int:pk>/read/", NotificationReadView.as_view()),
+    path("profile/avatar/", AvatarView.as_view()),
     path("profile/", ProfileView.as_view()),
     path("password/", SecurityView.as_view()),
     path("sessions/revoke/", RevokeOtherSessionsView.as_view()),

@@ -1,28 +1,28 @@
 /* Aparência web: cores compartilhadas sem alterar dimensões, conteúdo ou as artes originais. */
 :root {
-  --bg-main: #f8fafc;
-  --bg-app: #f8fafc;
+  --bg-main: #f7f8fa;
+  --bg-app: #f7f8fa;
   --bg-card: #ffffff;
   --bg-surface: #ffffff;
   --bg-sidebar: #f1f5f9;
   --bg-card-hover: #f1f5f9;
   --bg-input: #ffffff;
-  --border-color: #e2e8f0;
-  --text-main: #0f172a;
-  --text-muted: #526176;
-  --text-soft: #526176;
-  --primary: #0369a1;
-  --primary-hover: #075985;
-  --accent: #0369a1;
+  --border-color: #e3e6eb;
+  --text-main: #14181f;
+  --text-muted: #4b5563;
+  --text-soft: #4b5563;
+  --primary: #0b5cab;
+  --primary-hover: #094c8f;
+  --accent: #0b5cab;
   --on-primary: #ffffff;
-  --primary-soft: #e0f2fe;
-  --focus-ring: #0284c7;
+  --primary-soft: #e6f1fb;
+  --focus-ring: #0b5cab;
   --danger: #b91c1c;
   --danger-bg: #fef2f2;
   --success: #166534;
-  --success-bg: #f0fdf4;
-  --warning: #854d0e;
-  --warning-bg: #fefce8;
+  --success-bg: #e7f6ec;
+  --warning: #92400e;
+  --warning-bg: #fef3c7;
   --hero-start: #f0f9ff;
   --hero-mid: #e0f2fe;
   --hero-end: #f8fafc;
@@ -68,20 +68,20 @@
   color-scheme: light;
 }
 :root[data-theme="dark"] {
-  --bg-main: #0b1220;
-  --bg-app: #0b1220;
-  --bg-card: #111c30;
-  --bg-surface: #111c30;
+  --bg-main: #0f1319;
+  --bg-app: #0f1319;
+  --bg-card: #171c24;
+  --bg-surface: #171c24;
   --bg-sidebar: #172338;
   --bg-card-hover: #172338;
-  --bg-input: #111c30;
+  --bg-input: #171c24;
   --border-color: #2b3b52;
-  --text-main: #e2e8f0;
-  --text-muted: #b0bed0;
-  --text-soft: #b0bed0;
-  --primary: #38bdf8;
+  --text-main: #eef1f5;
+  --text-muted: #9aa4b2;
+  --text-soft: #9aa4b2;
+  --primary: #4b9bf0;
   --primary-hover: #7dd3fc;
-  --accent: #38bdf8;
+  --accent: #4b9bf0;
   --on-primary: #07111f;
   --primary-soft: #0d2b43;
   --focus-ring: #7dd3fc;
@@ -137,20 +137,20 @@
 }
 @media (prefers-color-scheme: dark) {
  :root:not([data-theme="light"]):not([data-theme="dark"]) {
-  --bg-main: #0b1220;
-  --bg-app: #0b1220;
-  --bg-card: #111c30;
-  --bg-surface: #111c30;
+  --bg-main: #0f1319;
+  --bg-app: #0f1319;
+  --bg-card: #171c24;
+  --bg-surface: #171c24;
   --bg-sidebar: #172338;
   --bg-card-hover: #172338;
-  --bg-input: #111c30;
+  --bg-input: #171c24;
   --border-color: #2b3b52;
-  --text-main: #e2e8f0;
-  --text-muted: #b0bed0;
-  --text-soft: #b0bed0;
-  --primary: #38bdf8;
+  --text-main: #eef1f5;
+  --text-muted: #9aa4b2;
+  --text-soft: #9aa4b2;
+  --primary: #4b9bf0;
   --primary-hover: #7dd3fc;
-  --accent: #38bdf8;
+  --accent: #4b9bf0;
   --on-primary: #07111f;
   --primary-soft: #0d2b43;
   --focus-ring: #7dd3fc;
@@ -206,14 +206,14 @@
  }
 }
 /* O app-root isola o z-index negativo do fundo da pilha da página. */
-.bg-tentacle { position: fixed; inset: 0; z-index: -1; pointer-events: none; background-image: var(--bg-tentacle); background-repeat: no-repeat; background-position: right -8% center; background-size: min(95vw, 1500px) auto; opacity: .10; }
+.bg-tentacle { position: fixed; inset: 0; z-index: -1; pointer-events: none; background-image: var(--bg-tentacle); background-repeat: no-repeat; background-position: right bottom; background-size: min(48vw, 680px) auto; opacity: .04; }
 /* Só as superfícies de página ficam transparentes; cartões, campos e diálogos preservam legibilidade. */
 @media screen {
  app-root > :not(.bg-tentacle):not(app-release):not(app-dialog):not(router-outlet),
  .library, .auth-shell, .form-area, .account-shell, .editor-shell, .paper { background: transparent !important; }
 }
 @media (max-width: 768px) {
- .bg-tentacle { background-size: 160vw auto; background-position: right -40% bottom 10%; opacity: .08; }
+ .bg-tentacle { background-size: 60vw auto; background-position: right bottom; opacity: .04; }
 }
 @media print {
  .bg-tentacle { display: none !important; }
@@ -293,3 +293,32 @@
   :root:not([data-theme="light"]) { --brand-logo-filter: invert(1); }
 }
 @media print { :root { --brand-logo-filter: none !important; } }
+
+/* Tokens de interface usados em ambos os temas. */
+:root {
+  --accent-hover: var(--primary-hover);
+  --accent-soft: var(--primary-soft);
+  --accent-soft-text: var(--accent);
+  --navy: #13233a;
+  --field-border: #778397;
+  --disabled-bg: #e5e7eb;
+  --disabled-text: #4b5563;
+}
+:root[data-theme="dark"] {
+  --field-border: #78879c;
+  --disabled-bg: #28303d;
+  --disabled-text: #c4ccd7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --field-border: #78879c;
+    --disabled-bg: #28303d;
+    --disabled-text: #c4ccd7;
+  }
+}
+body app-root :is(button,a,input,textarea,select,summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+body app-root :is(input,textarea,select):not([type="checkbox"]):not([type="radio"]) { border-color: var(--field-border); border-radius: 8px; }
+body app-root :is(input,textarea)::placeholder { color: var(--text-muted); opacity: 1; }
+body app-root button:disabled { background: var(--disabled-bg); color: var(--disabled-text); opacity: 1; }
+body app-root button:is(.primary,.submit):not(:disabled) { background: var(--accent); color: var(--on-primary); }
+body app-root button:is(.primary,.submit):hover:not(:disabled) { background: var(--accent-hover); }

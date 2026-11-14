@@ -1,3 +1,7 @@
+import re
+from uuid import uuid4
+from django.contrib.auth.validators import UnicodeUsernameValidator
+
 # Contratos de entrada e saída da conta: validação de credenciais, criação de usuário e emissão de sessão.
 # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
 from rest_framework import serializers
@@ -37,15 +41,17 @@ class UserSerializer(serializers.ModelSerializer):
     # Parâmetros — obj: registro que está sendo serializado.
     # Retorno: resultado de obj.has_usable_password(...).
     def get_has_password(self,obj): return obj.has_usable_password()
+    google_picture = serializers.CharField(source="google_account.picture_url", read_only=True, default=None)
     google_email = serializers.CharField(source="google_account.email", read_only=True, default=None)
     settings = UserSettingsSerializer(read_only=True)
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "first_name", "last_name", "settings", "google_email", "has_password", "date_joined", "last_login"]
+        fields = ["id", "username", "email", "first_name", "last_name", "settings", "google_picture", "google_email", "has_password", "date_joined", "last_login"]
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(required=False, max_length=150, validators=[UnicodeUsernameValidator()])
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     email = serializers.EmailField(required=True)
     first_name = serializers.CharField(required=True, max_length=150)
@@ -80,6 +86,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     # Retorno: attrs.
     # Falhas explícitas no fluxo: serializers.ValidationError. Consulte os blocos try/except para as conversões locais.
     def validate(self, attrs):
+        if not attrs.get("username"):
+            base = re.sub(r"[^a-zA-Z0-9_+.\-]", "", attrs["email"].split("@", 1)[0])[:150] or "usuario"
+            attrs["username"] = base
+            if User.objects.filter(username__iexact=base).exists():
+                attrs["username"] = f"{base[:137]}-{uuid4().hex[:12]}"
         try:
             validate_password(attrs["password"], User(username=attrs["username"], email=attrs["email"], first_name=attrs["first_name"]))
         except ValidationError as error:
@@ -111,6 +122,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     # Parâmetros — attrs: atributos de entrada do serializer.
     # Retorno: data.
     def validate(self, attrs):
+        identifier = attrs[self.username_field]
+        if "@" in identifier and not User.objects.filter(username=identifier).exists():
+            matches = list(User.objects.filter(email__iexact=identifier).values_list("username", flat=True)[:2])
+            if len(matches) == 1:
+                attrs = {**attrs, self.username_field: matches[0]}
         data = super().validate(attrs)
         data["user"] = UserSerializer(self.user).data
         return data

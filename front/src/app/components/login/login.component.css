@@ -146,3 +146,63 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .form-card { padding: 18px; }
   .mobile-brand { display: flex; width: fit-content; margin-bottom: 16px; }
 }
+
+.auth-shell .story { background:var(--navy); color:#eef1f5; }
+.story :is(p,small) { color:#c5ceda; }
+.story .example { font-size:16px; }
+.form-card { background:#fff; }
+.form-card app-google-sign-in { display:block; margin:12px 0 20px; }
+.form-card .switch a { color:#0b5cab; font-size:14px; }
+.form-card {
+  --text-main: #14181f;
+  --text-muted: #4b5563;
+  --accent: #0b5cab;
+  --accent-hover: #094c8f;
+  --on-primary: #fff;
+  --field-border: #778397;
+  --disabled-bg: #e5e7eb;
+  --disabled-text: #4b5563;
+  color: var(--text-main);
+}
+.form-card .field input { background:#fff; color:var(--text-main); }
+.form-card .password button:hover { background:#e6f1fb; }
+.auth-shell .form-card .field input::placeholder { color: var(--text-muted); }
+.auth-shell .form-card .submit:disabled {
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
+  opacity: 1;
+  cursor: default;
+}
+.auth-shell .form-card .submit:not(:disabled) {
+  background: var(--accent);
+  color: var(--on-primary);
+}
+.auth-shell .form-card .submit:hover:not(:disabled) { background: var(--accent-hover); }
+.auth-shell .story {
+  background:
+    linear-gradient(#13233af5, #13233af5),
+    url('/assets/img/bg/tentaculo-dark.png') right bottom / min(80%, 420px) auto no-repeat,
+    var(--navy);
+}
+.auth-shell .form-area { background: var(--bg-app); }
+
+.auth-shell .story { background:#13233a; }
+.story-footer { width:100%; display:flex; align-items:end; justify-content:space-between; gap:12px; }
+.story-footer small { max-width:24ch; }
+.form-card {
+  --training-term-bg:var(--bg,#f8fafc);
+  --training-term-border:var(--border,var(--border-color));
+  --training-term-link:var(--accent);
+}
+.form-card app-training-consent { color:var(--text,var(--text-main)); }
+.auth-divider { display:flex; align-items:center; gap:12px; margin:16px 0; color:var(--text-muted); font-size:13px; }
+.auth-divider::before,.auth-divider::after { content:""; flex:1; border-top:1px solid var(--border,var(--border-color)); }
+.password button { display:grid; place-items:center; }
+.password-strength { display:flex; align-items:center; gap:8px; }
+.password-strength meter { width:80px; }
+.form-card :is(.field small,.registration-hint) { color:var(--text-muted); font-size:13px; }
+.registration-hint { margin:8px 0 0; }
+.forgot-password { display:block; text-align:right; margin:0 0 16px; color:var(--accent); font-size:14px; }
+
+.auth-shell .form-area { background:#f8fafc; }
+.form-card app-training-consent { color:var(--text-main); --training-term-bg:#f8fafc; }

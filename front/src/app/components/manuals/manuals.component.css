@@ -4,3 +4,5 @@
 .step-review{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:14px}
 .guidance-note{margin:0 0 10px}
 @media(max-width:760px){.step-review{grid-template-columns:1fr;gap:4px}}
+
+.manual-badge { display:inline-block; padding:2px 8px; border-radius:999px; background:var(--accent-soft); color:var(--accent-soft-text); font-size:13px; }

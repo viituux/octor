@@ -24,6 +24,7 @@ export interface User {
   has_password?: boolean;
   date_joined?: string;
   last_login?: string|null;
+  google_picture?: string | null;
   google_email?: string | null;
   settings?: UserSettings;
 }
@@ -86,7 +87,7 @@ export class AuthService {
    * @returns Observable<AuthResponse>.
    * Falhas HTTP seguem pelo canal de erro do Observable; este método não confirma sucesso antes da resposta.
    */
-  register(userData: { username: string; first_name: string; email: string; password: string; consent_version: string }): Observable<AuthResponse> {
+  register(userData: { username?: string; first_name: string; email: string; password: string; consent_version: string }): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.apiUrl}/register/`, userData).pipe(tap(res=>this.acceptSession(res)));
   }
   /**
@@ -118,6 +119,20 @@ export class AuthService {
    * @returns Observable<User>.
    * Falhas HTTP seguem pelo canal de erro do Observable; este método não confirma sucesso antes da resposta.
    */
+  getAvatar() {
+    return this.http.get(this.apiUrl+'/profile/avatar/', {responseType:'blob'});
+  }
+
+  updateAvatar(photo: Blob) {
+    const body = new FormData();
+    body.append('avatar', photo, 'avatar.png');
+    return this.http.post<void>(this.apiUrl+'/profile/avatar/', body);
+  }
+
+  removeAvatar() {
+    return this.http.delete<void>(this.apiUrl+'/profile/avatar/');
+  }
+
   updateProfile(data:Record<string,unknown>):Observable<User>{return this.http.patch<User>(this.apiUrl+'/profile/',data).pipe(tap(user=>this.saveUser(user)));}
   /**
    * Solicita a troca de senha e aplica os tokens da nova versão de sessão.

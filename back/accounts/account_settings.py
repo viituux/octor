@@ -23,6 +23,9 @@ from .serializers import UserSerializer
 from .models import UserSettings
 # Dependência: contratos e funções do módulo .sessions reutilizados neste fluxo.
 from .sessions import session_tokens
+from io import BytesIO
+from django.http import HttpResponse
+from PIL import Image, UnidentifiedImageError
 
 
 # Confirma a identidade por senha atual ou credencial Google vinculada antes de autorizar alteração sensível.
@@ -163,3 +166,37 @@ class SecurityView(APIView):
 
 class RevokeOtherSessionsView(SecurityView):
     change_password=False
+
+
+class AvatarView(APIView):
+    """Consulta, substitui ou remove exclusivamente a foto da conta autenticada."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
+
+    def get(self, request):
+        avatar = UserSettings.objects.filter(user=request.user).values_list('avatar', flat=True).first()
+        if not avatar:
+            return Response({'hidden': avatar is not None}, headers={'Cache-Control': 'private, no-store'})
+        return HttpResponse(bytes(avatar), content_type='image/png',
+                            headers={'Cache-Control': 'private, no-store'})
+
+    def post(self, request):
+        upload = request.FILES.get('avatar')
+        if not upload or upload.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError({'detail': 'Envie uma imagem de até 5 MB.'})
+        try:
+            with Image.open(upload, formats=['JPEG', 'PNG', 'WEBP']) as image:
+                if image.size != (512, 512):
+                    raise ValueError()
+                output = BytesIO()
+                image.convert('RGBA').save(output, 'PNG')
+        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError, SyntaxError):
+            raise serializers.ValidationError({'detail': 'Envie um recorte JPG, PNG ou WebP de 512 × 512.'})
+        UserSettings.objects.filter(user=request.user).update(avatar=output.getvalue())
+        return Response(status=204)
+
+    def delete(self, request):
+        UserSettings.objects.filter(user=request.user).update(avatar=b"")
+        return Response(status=204)

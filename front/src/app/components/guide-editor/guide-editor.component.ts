@@ -221,11 +221,46 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    * @param router — Router; roteador injetado para navegação.
    * @returns void/undefined; efeitos nas operações do corpo.
    */
+  get avatarInitials(): string {
+    const user = this.auth.currentUser();
+    const name = user?.first_name?.trim() || user?.email || user?.username || '';
+    return name.split(/\s+/).slice(0, 2).map(word => word.charAt(0)).join('').toUpperCase() || 'O';
+  }
+
+  private stepTitle(step: Step): string {
+    return this.getPrintStepTitle(step);
+  }
+
+  displayStepTitle(step: Step): string {
+    return this.stepTitle(step).replace(/\S+@[^\s@]+\.[^\s@]+.*/, '…');
+  }
+
+  beginTitleEdit(event: Event, step: Step): void {
+    if (this.canEdit) (event.target as HTMLTextAreaElement).value = this.stepTitle(step);
+  }
+
+  saveStepTitle(event: Event, step: Step): void {
+    if (!this.canEdit) return;
+    const input = event.target as HTMLTextAreaElement;
+    const title = input.value.trim().slice(0, 90);
+    if (title === this.stepTitle(step)) {
+      input.value = this.displayStepTitle(step);
+      return;
+    }
+    const annotations = (step.annotations || []).filter(item => item.type !== 'editor_step_title');
+    if (title) annotations.push({type: 'editor_step_title', title});
+    this.guideService.updateStep(step.id, {annotations}).subscribe({
+      next: () => { step.annotations = annotations; input.value = this.displayStepTitle(step); },
+      error: () => { input.value = this.displayStepTitle(step); this.saveMessage = 'Não foi possível salvar o título do passo.'; },
+    });
+  }
+
   constructor(
     private route: ActivatedRoute,
     private guideService: GuideService,
     private router: Router,
-    private dialogs: DialogService
+    private dialogs: DialogService,
+    private auth: AuthService
   ) {}
 
   /**
@@ -619,11 +654,28 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    * @returns string.
    */
   getPrintStepTitle(step: Step): string {
-    const label = (step.element_text || '').trim().replace(/\s+/g, ' ');
-    if(step.action_type==='reference')return label?'Consultar '+label.slice(0,90):'Consultar a tela de referência';
-    const action: Record<string, string> = {click:'Selecionar', input:'Preencher', change:'Selecionar', navigation:'Acessar'};
-    if (label) return (action[step.action_type] || 'Interagir com') + ' ' + (label.length > 90 ? label.slice(0,87) + '…' : label);
-    return step.action_type === 'navigation' ? 'Acessar a página do procedimento' : 'Executar a ação indicada';
+    const meaningful = (value: string) => value && !/^(button|input|select|textarea|a|div|span|link|label|textbox|checkbox|radio|form|submit|element|elemento|botão|campo)$/i.test(value);
+    const clean = (value?: string) => (value || '').trim().replace(/\s+/g, ' ');
+    const shorten = (value: string) => value.length <= 90
+      ? value : value.slice(0, 87).replace(/\s+\S*$/, '') + '…';
+    const title = clean(step.annotations?.find(item => item.type === 'editor_step_title')?.title);
+    if (meaningful(title) && title.length <= 90 && !clean(step.text).startsWith(title)) return title;
+
+    const label = clean(step.element_text);
+    const actions: Record<string, string> = {
+      click: 'Selecione', input: 'Digite em', change: 'Selecione',
+      navigation: 'Acesse', reference: 'Consulte'
+    };
+    if (meaningful(label)) return shorten((actions[step.action_type] || 'Selecione') + ' ' + label);
+
+    const fallback: Record<string, string> = {
+      input: 'Digite a informação no campo indicado',
+      change: 'Selecione a opção indicada',
+      click: 'Clique no controle destacado',
+      navigation: 'Acesse a página do procedimento',
+      reference: 'Consulte a tela de referência'
+    };
+    return fallback[step.action_type] || 'Siga a orientação do passo';
   }
 
   /**

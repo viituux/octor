@@ -8,7 +8,7 @@ import {Component,Input,OnInit,OnDestroy} from '@angular/core';
   </button>`,styles:[`
   :host{position:fixed;right:20px;bottom:20px;z-index:30;display:block}
   :host(.inline){position:static;display:inline-flex;z-index:auto}
-  :host(.compact) button{width:44px;padding:10px;justify-content:center}
+  :host(.compact) button{box-sizing:border-box;width:40px;height:40px;min-height:40px;padding:0;justify-content:center;border-color:var(--border,var(--border-color));box-shadow:none}
   :host(.compact) span{display:none}
   button{display:inline-flex;align-items:center;gap:9px;min-height:44px;padding:10px 14px;border:1px solid var(--border-color);border-radius:12px;background:var(--bg-surface);color:var(--text-main);box-shadow:var(--shadow-card);font:600 12px var(--font-ui);cursor:pointer}
   button:hover{background:var(--bg-card-hover)}button:focus-visible{outline:3px solid var(--focus-ring);outline-offset:3px}svg{flex:none}

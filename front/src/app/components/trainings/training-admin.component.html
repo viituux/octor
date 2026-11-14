@@ -1,8 +1,8 @@
 <!-- A publicação exige cinco perguntas revisadas; versões iniciadas permanecem imutáveis. -->
 <app-training-nav></app-training-nav><main class="training-page">
-  <div class="row"><div><span class="eyebrow">GESTÃO DO APRENDIZADO</span><h1>{{view==='list'?'Treinamentos':id?'Editar treinamento':'Novo treinamento'}}</h1></div><a *ngIf="view==='list'" class="button primary" routerLink="/training-admin/new">＋ Novo treinamento</a><a *ngIf="view==='edit'" routerLink="/training-admin">← Voltar à lista</a></div>
+  <div class="row"><div><h1>{{view==='list'?'Treinamentos':id?'Editar treinamento':'Novo treinamento'}}</h1></div><a *ngIf="view==='list'" class="button primary" routerLink="/training-admin/new">＋ Novo treinamento</a><a *ngIf="view==='edit'" routerLink="/training-admin">← Voltar à lista</a></div>
   <p *ngIf="loading" role="status">Carregando…</p><p *ngIf="error" role="alert" class="alert error">{{error}} <button *ngIf="!loading && !training && !items.length" (click)="load()">Tentar novamente</button></p><p *ngIf="notice" role="status" class="alert">{{notice}}</p>
-  <form *ngIf="view==='list'||id" class="filters panel" (ngSubmit)="applyFilters()"><label>De<input type="date" name="start" [(ngModel)]="start"></label><label>Até<input type="date" name="end" [(ngModel)]="end"></label><label>Pontuação mínima<input type="number" name="minScore" min="0" max="100" [(ngModel)]="minScore"></label><label>Estrelas<select name="rating" [(ngModel)]="rating"><option value="">Todas</option><option *ngFor="let n of [1,2,3,4,5]" [value]="n">{{n}} estrelas</option></select></label><button [disabled]="busy">Aplicar filtros</button></form>
+  <fieldset *ngIf="view==='list'||id" class="compact-filters" aria-label="Filtros" [disabled]="loading || busy"><app-training-period (periodChange)="start=$event.start; end=$event.end; applyFilters()"></app-training-period><label class="training-filter">Avaliação<select name="rating" [ngModel]="rating" (ngModelChange)="rating=$event; applyFilters()"><option value="">Todas</option><option *ngFor="let n of [1,2,3,4,5]" [value]="n">{{n}} estrelas</option></select></label></fieldset>
   <ng-container *ngIf="!loading && view==='list'">
     <div class="table-wrap training-directory" *ngIf="items.length">
       <table role="table">
@@ -10,21 +10,21 @@
         <thead role="rowgroup">
           <tr role="row">
             <th scope="col" role="columnheader">Treinamento</th>
-            <th scope="col" role="columnheader">Participantes</th>
-            <th scope="col" role="columnheader">Avaliação</th>
-            <th scope="col" role="columnheader">Quiz (média)</th>
-            <th scope="col" role="columnheader">Conclusão</th>
+            <th scope="col" role="columnheader" class="numeric">Participantes</th>
+            <th scope="col" role="columnheader" class="numeric">Avaliação</th>
+            <th scope="col" role="columnheader" class="numeric">Quiz (média)</th>
+            <th scope="col" role="columnheader" class="numeric">Conclusão</th>
             <th scope="col" role="columnheader">Estado</th>
           </tr>
         </thead>
         <tbody role="rowgroup">
           <tr *ngFor="let t of items" role="row">
             <th class="training-name" scope="row" role="rowheader"><a [routerLink]="['/training-admin',t.id]">{{t.title}}</a></th>
-            <td role="cell"><span class="metric-label" aria-hidden="true">Participantes</span>{{t.participants}}</td>
-            <td role="cell"><span class="metric-label" aria-hidden="true">Avaliação</span>{{t.average_stars===null?'—':t.average_stars+' / 5'}}</td>
-            <td role="cell"><span class="metric-label" aria-hidden="true">Quiz (média)</span>{{t.average_score===null?'—':t.average_score+'%'}}</td>
-            <td role="cell"><span class="metric-label" aria-hidden="true">Conclusão</span>{{t.completion_rate}}%</td>
-            <td role="cell"><span class="metric-label" aria-hidden="true">Estado</span>{{t.status==='published'?'Publicado':t.status==='archived'?'Arquivado':'Rascunho'}}</td>
+            <td role="cell" class="numeric"><span class="metric-label" aria-hidden="true">Participantes</span>{{t.participants}}</td>
+            <td role="cell" class="numeric"><span class="metric-label" aria-hidden="true">Avaliação</span>{{t.average_stars===null?'—':t.average_stars+' / 5'}}</td>
+            <td role="cell" class="numeric"><span class="metric-label" aria-hidden="true">Quiz (média)</span><span class="directory-progress"><progress *ngIf="t.average_score!==null" max="100" [value]="t.average_score" aria-hidden="true"></progress><span>{{t.average_score===null?'—':t.average_score+'%'}}</span></span></td>
+            <td role="cell" class="numeric"><span class="metric-label" aria-hidden="true">Conclusão</span><span class="directory-progress"><progress *ngIf="t.completion_rate!==null" max="100" [value]="t.completion_rate" aria-hidden="true"></progress><span>{{t.completion_rate}}%</span></span></td>
+            <td role="cell"><span class="metric-label" aria-hidden="true">Estado</span><span class="training-state" [class.published]="t.status==='published'">{{t.status==='published'?'Publicado':t.status==='archived'?'Arquivado':'Rascunho'}}</span></td>
           </tr>
         </tbody>
       </table>
@@ -68,7 +68,7 @@
       <p *ngIf="training?.status==='draft'" class="muted">Os participantes verão a atribuição como “Aguardando publicação”. Para liberar o conteúdo, publique o treinamento na seção acima.</p>
       <form class="assignment" (ngSubmit)="assign()"><label for="participant-emails">E-mails<textarea id="participant-emails" name="emails" [(ngModel)]="emails" rows="2" placeholder="ana@empresa.com, joao@empresa.com"></textarea></label><button class="primary" [disabled]="busy||!emails.trim()">Atribuir treinamento</button></form>
       <div class="metrics" *ngIf="training?.summary as s"><article><span>Média de estrelas</span><strong>{{s.average_stars===null?'—':s.average_stars+' / 5'}}</strong></article><article><span>Média do quiz (versão atual)</span><strong>{{s.average_score===null?"—":s.average_score+"%"}}</strong></article><article><span>Avaliações</span><strong>{{s.evaluations}}</strong></article><article><span>Conclusão do treinamento</span><strong>{{s.completion_rate}}%</strong></article></div>
-      <div class="table-wrap" *ngIf="training?.participants?.length"><table><caption class="sr-only">Participantes e avaliações</caption><thead><tr><th>Participante</th><th>Realizou</th><th>Avaliou</th><th>Comentou</th><th>Quiz</th><th>Tempo do quiz</th><th>Estrelas</th><th>Data</th></tr></thead><tbody><tr *ngFor="let p of training?.participants"><td><button class="text" (click)="inspect(p.id)" [disabled]="busy">{{p.name}}</button><small>{{p.email}}</small></td><td>{{p.completed?'Sim':p.started?'Em andamento':'Não'}}</td><td>{{p.evaluated?'Sim':'Não'}}</td><td>{{p.commented?'Sim':'Não'}}</td><td>{{p.quiz?.finished_at?p.quiz.score+" pontos":"Pendente"}}</td><td>{{p.quiz?.finished_at?p.quiz.time_seconds+" s":"—"}}</td><td>{{p.stars || '—'}}</td><td>{{p.date | date:'dd/MM/yyyy'}}</td></tr></tbody></table></div><p *ngIf="!training?.participants?.length" class="muted">Nenhum participante corresponde a esta consulta.</p>
+      <div class="table-wrap" *ngIf="training?.participants?.length"><table><caption class="sr-only">Participantes e avaliações</caption><thead><tr><th>Participante</th><th>Realizou</th><th>Avaliou</th><th>Comentou</th><th>Quiz</th><th>Tempo do quiz</th><th>Avaliação</th><th>Data</th></tr></thead><tbody><tr *ngFor="let p of training?.participants"><td><button class="text" (click)="inspect(p.id)" [disabled]="busy">{{p.name}}</button><small>{{p.email}}</small></td><td>{{p.completed?'Sim':p.started?'Em andamento':'Não'}}</td><td>{{p.evaluated?'Sim':'Não'}}</td><td>{{p.commented?'Sim':'Não'}}</td><td>{{p.quiz?.finished_at?p.quiz.score+" pontos":"Pendente"}}</td><td>{{p.quiz?.finished_at?p.quiz.time_seconds+" s":"—"}}</td><td>{{p.stars || '—'}}</td><td>{{p.date | date:'dd/MM/yyyy'}}</td></tr></tbody></table></div><p *ngIf="!training?.participants?.length" class="muted">Nenhum participante corresponde a esta consulta.</p>
     </section>
     <section id="participant-details" tabindex="-1" class="panel" *ngIf="inspection as person"><div class="row"><h2>Auditoria · {{person.user.name}}</h2><button (click)="inspection=null">Fechar auditoria</button></div>
       <p class="version-stamp">Versão cursada: <strong>{{person.version_info?.label||'Não iniciada'}}</strong> · Publicação: {{person.version_info?.published_at | date:'dd/MM/yyyy HH:mm:ss'}}</p>

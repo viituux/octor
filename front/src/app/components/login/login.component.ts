@@ -31,8 +31,24 @@ import { GoogleSignInComponent } from './google-sign-in.component';
 import { TrainingConsentComponent } from '../shared/training-consent.component';
 @Component({selector:'app-login',standalone:true,imports:[OctorLogoComponent,CommonModule,FormsModule,RouterModule,GoogleSignInComponent,TrainingConsentComponent],templateUrl:'./login.component.html',styleUrls:['./login.component.css']})
 export class LoginComponent implements OnDestroy {
- username='';password='';confirmation='';firstName='';email='';isRegistering=false;/* boolean: diferencia carga inicial, estado vazio e conteúdo já recebido. */ loading=false;errorMessage='';showPassword=false;
+ username='';password='';usernameEdited=false;firstName='';email='';isRegistering=false;/* boolean: diferencia carga inicial, estado vazio e conteúdo já recebido. */ loading=false;errorMessage='';showPassword=false;
  consentVersion = '';
+ updateEmail(value:string) {
+  this.email=value;
+  if(!this.usernameEdited) this.username=value.includes('@') ? this.suggestedUsername : '';
+ }
+ get suggestedUsername() { return this.email.split('@')[0].replace(/[^a-zA-Z0-9_+.\-]/g,'').slice(0,150); }
+ get strength() {
+  if(this.password.length<8) return 0;
+  const varied = /[a-z]/.test(this.password) && /[A-Z0-9\W]/.test(this.password);
+  return this.password.length>=12 && varied ? 3 : varied || this.password.length>=12 ? 2 : 1;
+ }
+ get registrationHint() {
+  if(!this.firstName.trim() || !this.email.trim() || !this.password) return 'Preencha nome, e-mail e senha.';
+  if(this.password.length<8) return 'Use pelo menos 8 caracteres na senha.';
+  if(!this.consentVersion) return 'Aceite o termo para continuar.';
+  return '';
+ }
  private routeSubscription:Subscription;
  /**
   * Recebe as dependências e prepara o estado inicial da instância conforme o ciclo de injeção Angular.
@@ -42,7 +58,7 @@ export class LoginComponent implements OnDestroy {
   * @returns void/undefined; efeitos nas operações do corpo.
   */
  constructor(private auth:AuthService,private router:Router,public route:ActivatedRoute){
-  this.routeSubscription=route.data.subscribe(data=>{this.isRegistering=data['register']===true;this.errorMessage='';this.password='';this.confirmation='';this.consentVersion='';});
+  this.routeSubscription=route.data.subscribe(data=>{this.isRegistering=data['register']===true;this.email='';this.errorMessage='';this.password='';this.username='';this.usernameEdited=false;this.showPassword=false;this.consentVersion='';});
   if(auth.isAuthenticated())this.finish();
  }
  /**
@@ -59,24 +75,22 @@ export class LoginComponent implements OnDestroy {
   this.errorMessage='';
   form.form.markAllAsTouched();
   const errors:string[]=[];
-  if(!this.username.trim())errors.push('Informe o nome de usuário.');
+  if(!this.isRegistering && !this.username.trim())errors.push('Informe o usuário ou e-mail.');
   if(this.isRegistering && !this.firstName.trim())errors.push('Informe seu nome.');
   if(this.isRegistering && !this.email.trim())errors.push('Informe seu e-mail.');
   else if(this.isRegistering && form.controls['email']?.invalid)errors.push('Informe um e-mail válido.');
   if(!this.password)errors.push('Informe sua senha.');
   else if(this.isRegistering && this.password.length<8)errors.push('A senha precisa ter pelo menos 8 caracteres.');
-  if(this.isRegistering && !this.confirmation)errors.push('Confirme sua senha.');
   if(this.isRegistering && !this.consentVersion)errors.push('Leia e aceite o termo sobre dados do treinamento.');
   if(errors.length){this.errorMessage=errors.join(' ');return;}
   if(form.invalid){this.errorMessage='Revise os campos do formulário antes de continuar.';return;}
-  if(this.isRegistering && this.password!==this.confirmation){this.errorMessage='As senhas não coincidem.';return;}
   this.loading=true;
-  const operation=this.isRegistering?this.auth.register({username:this.username.trim(),first_name:this.firstName.trim(),email:this.email.trim(),password:this.password,consent_version:this.consentVersion}):this.auth.login({username:this.username.trim(),password:this.password});
+  const operation=this.isRegistering?this.auth.register({username:this.usernameEdited ? this.username.trim() || undefined : undefined,first_name:this.firstName.trim(),email:this.email.trim(),password:this.password,consent_version:this.consentVersion}):this.auth.login({username:this.username.trim(),password:this.password});
   operation.subscribe({next:/* Aplica a resposta assíncrona ao estado desta operação no contexto do componente. | @returns void/undefined; efeitos nas operações do corpo. */ ()=>{this.loading=false;this.finish();},error:/* Trata a falha assíncrona e mantém a mensagem/estado funcional desta operação. | @param error — falha recebida da operação. | @returns void/undefined; efeitos nas operações do corpo. */ error=>{
    this.loading=false;
    const body=error.error;
    this.errorMessage=typeof body==='object' ? Object.values(body).flat().join(' ') : 'Não foi possível conectar. Tente novamente.';
-   if(error.status===401)this.errorMessage='Usuário ou senha incorretos.';
+   if(error.status===401)this.errorMessage='Usuário, e-mail ou senha incorretos.';
   }});
  }
  /**

@@ -5,3 +5,53 @@
 :host{color:var(--text-main)}.topbar{background:var(--bg-surface);border-color:var(--border-color)}aside{background:var(--bg-sidebar);border-color:var(--border-color)}nav button{color:var(--ui-475569)}nav button.active{background:var(--ui-e0f2fe);border-color:var(--ui-bae6fd);color:var(--ui-0369a1);box-shadow:inset 3px 0 var(--ui-0284c7)}.identity{border-color:var(--ui-e2e8f0)}.identity small,.eyebrow,.page-heading>p,.panel header p,small,.hint,footer>span,.summary dt{color:var(--ui-64748b)}.avatar{background:var(--ui-e0f2fe);border-color:var(--ui-bae6fd);color:var(--ui-0369a1)}.panel{background:var(--ui-ffffff);border-color:var(--ui-e2e8f0)}label{color:var(--ui-334155)}input{background:var(--ui-ffffff);border-color:var(--ui-cbd5e1);color:var(--ui-0f172a)}button{background:var(--ui-ffffff);border-color:var(--ui-cbd5e1);color:var(--ui-334155)}button:hover:not(:disabled){background:var(--ui-f1f5f9)}.primary{background:var(--ui-0284c7);border-color:var(--ui-0284c7);color:var(--on-primary)}.primary:hover:not(:disabled){background:var(--ui-0369a1)}.success{background:var(--ui-f0fdf4);border-color:var(--ui-bbf7d0);color:var(--ui-166534)}.error{background:var(--ui-fef2f2);border-color:var(--ui-fecaca);color:var(--ui-991b1b)}.field-error{color:var(--ui-b91c1c)}.badge{background:var(--ui-f0fdf4);border-color:var(--ui-bbf7d0);color:var(--ui-166534)}.extension-steps{color:var(--ui-475569)}
 
 .account-mascot{margin-top:30px}@media(max-width:680px){.account-mascot{display:none}}
+
+main { padding-left:32px; }
+nav button.active { background:var(--accent-soft); color:var(--accent-soft-text); box-shadow:inset 3px 0 var(--accent); font-weight:600; }
+.panel { border-radius:12px; }
+@media(max-width:680px) { main { padding-left:20px; } }
+
+.layout { max-width:none; margin:0; }
+main { box-sizing:border-box; }
+.page-heading > p, .panel header p, .panel > p, .field > small:not(.field-error),
+.identity small, .hint, footer > span, .crop-dialog > p:not(.field-error) {
+  color:var(--text-muted); font-size:13px;
+}
+.profile-panel .primary:disabled {
+  background:var(--disabled-bg,var(--bg-sidebar)); color:var(--disabled-text,var(--text-muted));
+  border-color:var(--border-color); opacity:1; cursor:default;
+}
+.optional-field { position:relative; }
+.optional-field input { padding-right:75px; }
+.optional-field span {
+  position:absolute; top:50%; right:12px; transform:translateY(-50%);
+  font-size:13px; color:var(--text-muted); pointer-events:none;
+}
+.account-meta, .account-entry { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.account-meta { margin:0; }
+.profile-photo { display:flex; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:22px; }
+.profile-photo input[hidden] { display:none; }
+.photo-avatar {
+  position:relative; display:grid; place-items:center; flex:none; overflow:hidden;
+  box-sizing:border-box; width:96px; height:96px; border-radius:50%; padding:0;
+  font-size:28px; font-weight:700; background:var(--accent-soft); color:var(--accent-soft-text);
+}
+.photo-avatar img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.photo-overlay { position:absolute; inset:0; display:grid; place-items:center; background:#0f172a99; color:#fff; opacity:0; }
+.photo-avatar:hover .photo-overlay, .photo-avatar:focus-visible .photo-overlay { opacity:1; }
+.photo-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.crop-dialog {
+  box-sizing:border-box; width:min(380px,calc(100vw - 32px)); max-height:calc(100dvh - 32px);
+  border:1px solid var(--border-color); border-radius:12px; padding:20px;
+  background:var(--bg-surface); color:var(--text-main);
+}
+.crop-dialog::backdrop { background:#0f172ab3; }
+.crop-dialog canvas { display:block; width:min(100%,248px); height:auto; margin:12px auto; background:var(--bg-sidebar); }
+.crop-controls label { display:grid; grid-template-columns:75px minmax(0,1fr); align-items:center; margin:4px 0; }
+.crop-controls input { margin:0; padding:0; min-height:32px; }
+.profile-toast {
+  position:fixed; z-index:30; right:16px; bottom:16px; opacity:0; pointer-events:none;
+  border-radius:9px; padding:12px 16px; border:1px solid var(--success);
+  color:var(--success); background:var(--success-bg); font-size:14px;
+}
+.profile-toast.visible { opacity:1; }
