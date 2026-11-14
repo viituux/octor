@@ -208,11 +208,13 @@ async function captureActionImage(event, sender) {
   if (delay) await new Promise(resolve => setTimeout(resolve, delay));
   if (Date.now() - event.timestamp > maxAge) return missing('expired');
   const expected = event.capture_context;
-  const probe = /* Consulta o contexto do alvo original na aba para verificar se a cena continua capturável. | @returns resultado de chrome.tabs.sendMessage(...). */ () => chrome.tabs.sendMessage(sender.tab.id, { action: 'CAPTURE_CONTEXT', capture_id: event.capture_id });
+  const probe = /* Consulta o contexto do alvo original na aba para verificar se a cena continua capturável. | @returns resultado de chrome.tabs.sendMessage(...). */ (hideHover = false) => chrome.tabs.sendMessage(sender.tab.id, { action: 'CAPTURE_CONTEXT', capture_id: event.capture_id, hide_hover: hideHover });
+  let hoverSuspended = false;
   try {
     const [tab] = await chrome.tabs.query({ active: true, windowId: sender.tab.windowId });
     if (tab?.id !== sender.tab.id) return missing('tab_changed');
-    const before = await probe();
+    hoverSuspended = true;
+    const before = await probe(true);
     if (!sameCaptureScene(before, expected)) return missing('page_changed');
     lastImageAt = Date.now();
     const image = await chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: 'jpeg', quality: 85 });
@@ -221,6 +223,9 @@ async function captureActionImage(event, sender) {
     if (active?.id !== sender.tab.id || !sameCaptureScene(after, expected)) return missing('page_changed');
     return { image, status: 'captured', captured_at: Date.now() };
   } catch { return missing('capture_failed'); }
+  finally {
+    if (hoverSuspended) chrome.tabs.sendMessage(sender.tab.id, { action: 'RESTORE_RECORDING_HOVER' }).catch(() => {});
+  }
 }
 /**
  * Prepara a imagem/contexto do alvo antes da confirmação da ação para reduzir divergências durante navegação.

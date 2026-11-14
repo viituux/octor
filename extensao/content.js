@@ -10,7 +10,25 @@ chrome.runtime.onMessage.addListener(/* Recebe o evento do navegador/Chrome e de
   }
   if (message.action === 'CAPTURE_CONTEXT') {
     const target = message.capture_id ? captureTargets.get(message.capture_id) : captureTarget;
+    if (message.hide_hover) {
+      pendingScreenshots++;
+      hideHover();
+      if (!hoverOutline || document.hidden) {
+        respond(target ? captureContext(target) : null);
+        return false;
+      }
+      // Aguarda a pintura sem o contorno antes de liberar a captura da aba.
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        respond(target ? captureContext(target) : null);
+      }));
+      return true;
+    }
     respond(target ? captureContext(target) : null); return false;
+  }
+  if (message.action === 'RESTORE_RECORDING_HOVER' && sender.id === chrome.runtime.id) {
+    pendingScreenshots = Math.max(0, pendingScreenshots - 1);
+    if (pointer && !pendingScreenshots) scheduleHover();
+    return false;
   }
   if (message.action === 'RECORDER_READY') {
     respond({ ready: !!globalThis.AutoGuideTargets });
@@ -60,9 +78,104 @@ function captureContext(target = captureTarget) {
     width: window.innerWidth, height: window.innerHeight };
 }
 
+let hoverHost, hoverOutline, hoverListeners, hoverFrame;
+let pointer = null;
+let pendingScreenshots = 0;
+
+// Âncoras sem destino podem envolver seções inteiras sem representar um link.
+const recordingControls = AutoGuideTargets.actionable.replace(',a,', ',a[href],');
+
+function recordingTarget(raw) {
+  if (!(raw instanceof Element)) return null;
+  let target = raw;
+  for (let candidate = raw; candidate; candidate = candidate.parentElement) {
+    if (!candidate.matches?.(recordingControls)) continue;
+    const bounds = candidate.getBoundingClientRect();
+    const wrapsPage = bounds.width >= window.innerWidth * 0.65 &&
+      bounds.height >= window.innerHeight * 0.30;
+    if (!wrapsPage) target = candidate;
+    break;
+  }
+
+  // Ícones SVG podem entregar um path como alvo; use o ícone completo.
+  if (target === raw && raw.ownerSVGElement) target = raw.ownerSVGElement;
+  if (target === document.body || target === document.documentElement) return null;
+  const bounds = target.getBoundingClientRect();
+  if (bounds.width >= window.innerWidth * 0.65 && bounds.height >= window.innerHeight * 0.30) return null;
+  return target.type === 'password' || target.getAttribute('autocomplete') === 'current-password'
+    ? null : target;
+}
+
+function hideHover() {
+  if (hoverOutline) hoverOutline.style.visibility = 'hidden';
+}
+
+function clearPointer() {
+  pointer = null;
+  hideHover();
+}
+
+function scheduleHover() {
+  if (hoverFrame != null) return;
+  hoverFrame = window.requestAnimationFrame(() => {
+    hoverFrame = null;
+    if (!pointer || pendingScreenshots) { hideHover(); return; }
+    const target = recordingTarget(pointer.target || document.elementFromPoint(pointer.x, pointer.y));
+    const rect = target?.getBoundingClientRect();
+    if (!rect?.width || !rect.height) { hideHover(); return; }
+
+    if (!hoverHost?.isConnected) {
+      hoverHost = document.createElement('div');
+      hoverHost.style.cssText = 'all:initial!important;position:fixed!important;inset:0!important;pointer-events:none!important;z-index:2147483647!important';
+      const shadow = hoverHost.attachShadow({mode:'closed'});
+      hoverOutline = document.createElement('div');
+      hoverOutline.style.cssText = 'position:absolute;pointer-events:none;box-sizing:border-box;outline:2px solid #38bdf8;outline-offset:-2px;border-radius:3px;box-shadow:inset 0 0 0 3px #0f172a70';
+      shadow.append(hoverOutline);
+      document.documentElement.append(hoverHost);
+    }
+    Object.assign(hoverOutline.style, {
+      left: rect.left+'px', top: rect.top+'px', width: rect.width+'px',
+      height: rect.height+'px', visibility: 'visible'
+    });
+  });
+}
+
+function syncHoverListeners() {
+  if (!isRecording || isPaused) {
+    hoverListeners?.abort();
+    hoverListeners = null;
+    if (hoverFrame != null) window.cancelAnimationFrame(hoverFrame);
+    hoverFrame = null;
+    clearPointer();
+    hoverHost?.remove();
+    hoverHost = hoverOutline = null;
+    return;
+  }
+  if (hoverListeners || !window.addEventListener) return;
+
+  hoverListeners = new AbortController();
+  const options = {signal:hoverListeners.signal, capture:true, passive:true};
+  document.addEventListener('pointermove', event => {
+    if (!event.isTrusted || event.pointerType === 'touch') return;
+    pointer = {x:event.clientX, y:event.clientY, target:event.target};
+    scheduleHover();
+  }, options);
+  // A saída de um filho (por exemplo, um SVG) não significa saída da página.
+  document.documentElement?.addEventListener('pointerleave', clearPointer,
+    {signal:hoverListeners.signal, passive:true});
+  window.addEventListener('pagehide', clearPointer, options);
+  function recheckPointer() {
+    if (pointer) pointer.target = null;
+    scheduleHover();
+  }
+  window.addEventListener('scroll', recheckPointer, options);
+  window.addEventListener('resize', recheckPointer, options);
+}
+
 function applyRecordingState(state) {
   isRecording = !!state?.isRecording;
   isPaused = !!state?.isPaused;
+  syncHoverListeners();
 }
 
 let receivedStateUpdate = false;
@@ -128,8 +241,8 @@ document.addEventListener('input', /* Trata evento input no contexto deste módu
 }, true);
 document.addEventListener('pointerdown', /* Trata evento pointerdown no contexto deste módulo; o estado e as verificações do handler delimitam quando a ação é aceita. | @param e — evento ou falha recebida, conforme o tipo declarado e o uso no corpo. | @returns void/undefined. */ e => {
   if (!isRecording || isPaused || !e.isTrusted || !(e.target instanceof Element)) return;
-  const target = e.target.closest(AutoGuideTargets.actionable) || e.target;
-  if (target.type === 'password') return;
+  const target = recordingTarget(e.target);
+  if (!target) return;
   interaction++;
   captureTarget = target;
   prepared = { id: documentId + ':' + interaction, target, time: Date.now() };
@@ -150,13 +263,8 @@ document.addEventListener(
   (e) => {
     if (!isRecording || isPaused || !e.isTrusted) return;
 
-    const rawTarget = e.target;
-    const target = rawTarget instanceof Element ? (rawTarget.closest(AutoGuideTargets.actionable) || rawTarget) : rawTarget;
-    if (!(target instanceof Element)) return;
-    // Ignora o evento de campos de senha; isso não mascara os demais dados sensíveis visíveis na imagem da tela.
-    if (target.type === "password" || target.getAttribute("autocomplete") === "current-password") {
-      return;
-    }
+    const target = recordingTarget(e.target);
+    if (!target) return;
 
     const matching = prepared && prepared.target === target && Date.now() - prepared.time < 1500;
     const captureId = matching ? prepared.id : documentId + ':click:' + interaction + ':' + eventSequence;

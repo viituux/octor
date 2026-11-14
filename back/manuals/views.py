@@ -89,7 +89,7 @@ class Action(Base):
             if action=='canonical':
                 if run.status not in ['waiting','capturing'] or run.captures.exists():raise serializers.ValidationError('Não é possível trocar a página de uma coleta já registrada.')
                 url=serializers.URLField(max_length=2000,validators=[safe_url]).run_validation(request.data.get('url'))
-                if not equivalent_page(run.url,url):raise serializers.ValidationError('O redirecionamento mudou o site ou a rota. Autorize uma nova coleta com a URL final.')
+                if not equivalent_page(run.url,url):raise serializers.ValidationError('O endereço final está fora do escopo desta coleta. Inicie outra coleta com a URL final.')
                 run.url=url;run.message='Endereço final confirmado. Aguardando o conteúdo da página.'
             elif action=='progress':
                 if run.status not in ['waiting','capturing']:return Response(data(run,True))

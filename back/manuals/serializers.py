@@ -97,9 +97,9 @@ class DocumentInput(serializers.Serializer):
 
 
 def equivalent_page(original, candidate):
-    """Aceita somente www equivalente e upgrade HTTP→HTTPS, sem trocar rota, query ou porta."""
+    """Aceita o destino inicial no mesmo site, mantendo as restrições de protocolo, porta e query."""
     before,after=urlsplit(original),urlsplit(candidate)
     host=lambda value:value.hostname.lower().removeprefix('www.')
     port=lambda value:value.port or (443 if value.scheme=='https' else 80)
     same_port=port(before)==port(after) or (before.scheme=='http' and after.scheme=='https' and port(before)==80 and port(after)==443)
-    return (before.scheme==after.scheme or (before.scheme=='http' and after.scheme=='https')) and host(before)==host(after) and same_port and (before.path or '/')==(after.path or '/') and before.query==after.query
+    return (before.scheme==after.scheme or (before.scheme=='http' and after.scheme=='https')) and host(before)==host(after) and same_port and before.query==after.query
