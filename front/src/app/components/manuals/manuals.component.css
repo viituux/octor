@@ -6,3 +6,19 @@
 @media(max-width:760px){.step-review{grid-template-columns:1fr;gap:4px}}
 
 .manual-badge { display:inline-block; padding:2px 8px; border-radius:999px; background:var(--accent-soft); color:var(--accent-soft-text); font-size:13px; }
+
+label[for="manual-objective"] {
+  font-weight: 700;
+  color: var(--ui-0f172a);
+}
+
+#manual-objective {
+  border: 2px solid var(--ui-0284c7);
+  min-height: 110px;
+}
+
+.history-row { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--ui-e2e8f0); }
+.history-row .history { flex: 1; min-width: 0; border-bottom: 0; }
+.delete-manual { color: var(--ui-991b1b); }
+.delete-dialog { margin: auto; width: min(460px, calc(100% - 32px)); box-sizing: border-box; color: var(--ui-0f172a); overflow-wrap: anywhere; }
+.delete-dialog::backdrop { background: #0008; }

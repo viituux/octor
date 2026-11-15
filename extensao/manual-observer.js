@@ -1,5 +1,5 @@
 /** Leitura visual somente: regiões úteis, máscaras temporárias e evidências medidas na viewport. */
-export function inspectManualPage(expectedUrl, position = null, cleanup = false) {
+export function inspectManualPage(expectedUrl, position = null, cleanup = false, objective = '') {
   const maskId='__octor_manual_privacy_mask__',styleId='__octor_manual_capture_style__';
   if(cleanup){document.getElementById(maskId)?.remove();document.getElementById(styleId)?.remove();return {ok:true};}
   const normalized=value=>{const u=new URL(value);u.hash='';return u.href;};
@@ -16,7 +16,25 @@ export function inspectManualPage(expectedUrl, position = null, cleanup = false)
     if(document.body.innerText.trim().length<40&&![...main.querySelectorAll('button,a,input,img,canvas')].some(el=>visible(el)&&((el.innerText||el.getAttribute('aria-label')||'').trim().length>1||el.naturalWidth>200)))return {waiting:true};
     const maxScroll=Math.max(0,document.documentElement.scrollHeight-innerHeight);
     const mainBottom=Math.min(maxScroll,Math.max(0,main.getBoundingClientRect().bottom+scrollY-innerHeight));
-    const positions=[0],add=y=>{const top=Math.max(0,Math.min(maxScroll,Math.round(y)));if(positions.length<6&&positions.every(old=>Math.abs(old-top)>innerHeight*.55))positions.push(top);};
+    const positions=[],add=y=>{const top=Math.max(0,Math.min(maxScroll,Math.round(y)));if(positions.length<6&&positions.every(old=>(mainBottom===0 ? old!==top : Math.abs(old-top)>innerHeight*.55)))positions.push(top);};
+    const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const ignored = new Set(['criar','manual','usuario','secoes','passos','funcionalidades','visiveis',
+      'como','mostre','onde','clique','abra','tela','pagina','para','pelo','pela','tirar','prints','quero','documentar']);
+    const words = new Set(normalize(objective || '').match(/[a-z0-9]{3,}/g)?.filter(word => !ignored.has(word)));
+    const targets = [...document.querySelectorAll('button,a,[role=button],[role=menuitem],summary,label,h1,h2,h3')]
+      .filter(visible)
+      .map(el => {
+        const label = normalize((el.getAttribute('aria-label') || el.innerText || el.getAttribute('title') || '').trim());
+        const labelWords = label.match(/[a-z0-9]{3,}/g) || [];
+        const score = label.length <= 120 ? [...new Set(labelWords)].filter(word => words.has(word)).length : 0;
+        return {el, score};
+      }).filter(target => target.score > 0).sort((a,b) => b.score - a.score);
+    // Reserve as primeiras capturas para os controles encontrados pelo objetivo.
+    for (const {el} of targets.slice(0, 12)) {
+      if (positions.length >= 3) break;
+      add(el.getBoundingClientRect().top + scrollY - innerHeight * .25);
+    }
+    add(0);
     if(mainBottom>innerHeight)add(mainBottom);
     const candidates=[...main.querySelectorAll('h1,h2,h3,[role=heading],form,table,[role=table]')].filter(el=>visible(el)&&!el.closest('footer,aside,nav')).slice(0,120);
     candidates.sort((a,b)=>{const score=el=>/FORM|TABLE/.test(el.tagName)||el.getAttribute('role')==='table'?3:/H1|H2/.test(el.tagName)?2:1;return score(b)-score(a)||(a.getBoundingClientRect().top-b.getBoundingClientRect().top);});
@@ -68,4 +86,62 @@ export function readManualViewport(expectedUrl, probe = false) {
   const text=texts.join(' ').slice(0,5000);
   const scene={url:u.href,scroll:scrollY,width:innerWidth,height:innerHeight,signature:JSON.stringify({text,controls,images:images.map(img=>[img.complete,img.naturalWidth,img.naturalHeight]),scroll:scrollY,width:innerWidth,height:innerHeight})};
   return {url:u.href,title:document.title.slice(0,200)||'Página analisada',evidence:{heading:clean(heading).slice(0,200),text,controls,scroll_y:Math.max(0,Math.round(scrollY)),viewport_width:innerWidth,viewport_height:innerHeight,page_height:document.documentElement.scrollHeight,quality:{warnings,pending_images:pending,masked_fields:masked.length,stable:false,visual_content:images.length>0||[...main.querySelectorAll('video,canvas,iframe')].some(visible)}},scene};
+}
+
+
+/** Seleciona novamente o controle na pagina antes de qualquer interacao. */
+export function manualNavigation(expectedUrl, index = null, expectedLabel = '', preview = false) {
+  if (location.href.split('#')[0] !== expectedUrl.split('#')[0]) return null;
+  if (document.querySelector('input[type=password]:not([hidden])')) return null;
+  const candidates = [];
+  const isYouTube = location.hostname === 'www.youtube.com';
+  const avatar = isYouTube ? document.querySelector('ytd-masthead button#avatar-btn') : null;
+  for (const candidate of new Set([avatar, ...document.querySelectorAll('a[href],details:not([open]) > summary,button[aria-haspopup="menu"][aria-expanded="false"],[role="button"][aria-haspopup="menu"][aria-expanded="false"],ytd-account-item-renderer,ytd-compact-link-renderer')])) {
+    if (!candidate) continue;
+    const accountItem = candidate.matches('ytd-account-item-renderer,ytd-compact-link-renderer');
+    const element = accountItem
+      ? candidate.querySelector('a,button,tp-yt-paper-item,[role="menuitem"]') || candidate
+      : candidate;
+    const rect = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    if (!hit || !element.contains(hit) || element.closest('[inert],[aria-hidden=true],[aria-disabled=true],:disabled,form')) continue;
+    const label = (element === avatar ? 'Menu da conta' : element.getAttribute('aria-label') || element.innerText || candidate.innerText || element.title || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+    if (!label || /@|logout|sign out|sair|excluir|delete|comprar|pagar|confirmar|remover|submit|desativar|unsubscribe|cancelar|checkout|purchase|add account|adicionar conta/i.test(label)) continue;
+    let url = null;
+    const youtubeSwitch = isYouTube &&
+      /^(trocar de conta|mudar de conta|switch account)$/i.test(label) && accountItem;
+    if (accountItem && !youtubeSwitch) continue;
+    if (!youtubeSwitch && element.matches('a')) {
+      const destination = new URL(element.href);
+      if (element.hasAttribute('download') || destination.origin !== location.origin ||
+          destination.search !== location.search || destination.pathname === location.pathname ||
+          /logout|signout|delete|checkout|unsubscribe|remove|revoke/i.test(destination.pathname)) continue;
+      url = destination.href;
+    }
+    candidates.push({element, label, url, kind: url ? 'page' : 'menu'});
+  }
+  candidates.sort((a, b) => Number(a.kind === 'page') - Number(b.kind === 'page'));
+  candidates.length = Math.min(40, candidates.length);
+  if (index === null) return candidates.map(({label, kind}) => ({label, kind}));
+  const target = candidates[index];
+  if (!target || target.label !== expectedLabel ||
+      candidates.filter(candidate => candidate.label === expectedLabel).length !== 1) return null;
+  if (preview) {
+    const bounds = target.element.getBoundingClientRect();
+    const outline = document.createElement('div');
+    outline.setAttribute('aria-hidden', 'true');
+    Object.assign(outline.style, {
+      position: 'fixed', pointerEvents: 'none', zIndex: '2147483647',
+      top: bounds.top + 'px', left: bounds.left + 'px',
+      width: bounds.width + 'px', height: bounds.height + 'px',
+      boxSizing: 'border-box', border: '2px solid #111',
+      borderRadius: '5px', boxShadow: '0 0 0 1px #fff',
+    });
+    document.documentElement.append(outline);
+    setTimeout(() => outline.remove(), 1400);
+    return true;
+  }
+  if (target.url) return {url: target.url};
+  target.element.click();
+  return {opened: true};
 }

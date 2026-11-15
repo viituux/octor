@@ -1,5 +1,5 @@
 /** Coleta somente leitura, vinculada a uma aba; nunca reutiliza ações sintéticas no gravador humano. */
-import {inspectManualPage,readManualViewport} from './manual-observer.js';
+import {inspectManualPage,readManualViewport,manualNavigation} from './manual-observer.js';
 // Registra a coleta de manuais no worker e reutiliza a mesma sessão HTTP da extensão.
 export function installManualCapture(apiFetch, serialize = operation => operation()) {
   let running=false,stopped=false,starting=false;
@@ -42,7 +42,7 @@ export function installManualCapture(apiFetch, serialize = operation => operatio
       let info;
       for(let attempt=0;attempt<12;attempt++){
         await ensureTab(session.tabId,session.url);
-        info=await exec(session.tabId,inspectManualPage,[session.url]);
+        info=await exec(session.tabId,inspectManualPage,[session.url,null,false,session.objective]);
         if(info?.attention)throw new Error(info.attention);
         if(info?.positions?.length)break;
         await wait(500);
@@ -51,15 +51,26 @@ export function installManualCapture(apiFetch, serialize = operation => operatio
       originalScroll=info.original_scroll;
       await api('/manuals/'+session.runId+'/progress/',{message:'Conteúdo identificado. Preparando '+info.positions.length+' prints.'});
       const existing=await api('/manuals/'+session.runId+'/');const done=new Set(existing.captures.map(c=>c.order));
-      const known=new Set(existing.captures.filter(c=>c.evidence.content_hash).map(c=>[c.evidence.content_hash,c.evidence.scroll_y,c.evidence.viewport_width,c.evidence.viewport_height].join(':')));
-      const positions=session.plan||info.positions;await state({plan:positions});
-      let accepted=existing.captures.length;
-      for(let index=0;index<positions.length;index++){
-        if(done.has(index+1))continue;
+      const known=new Set(existing.captures.filter(c=>c.evidence.content_hash).map(c=>[c.url,c.evidence.content_hash,c.evidence.scroll_y,c.evidence.viewport_width,c.evidence.viewport_height].join(':')));
+      const positions = session.plan || [originalScroll, ...info.positions.filter(y => y !== originalScroll)];
+      const visited = session.visited || [];
+      const screenSettleMs = 1200;
+      await state({plan:positions});
+      let accepted = existing.captures.length;
+      for (let index = 0; index < positions.length && index < 6; index++) {
+        if (done.has(index + 1)) continue;
         await ensureTab(session.tabId,session.url);
         const positioned=await exec(session.tabId,inspectManualPage,[session.url,positions[index]]);
         if(positioned.attention)throw new Error(positioned.attention);
-        let before,image;
+        let controls = [], decision, label;
+        if (session.objective && index < 5 && (index === 0 || visited.length === index)) {
+          controls = await exec(session.tabId, manualNavigation, [session.url]) || [];
+          const viewport = await exec(session.tabId, readManualViewport, [session.url, true]);
+          const page = {title: viewport.title, text: viewport.evidence.text.slice(0, 700)};
+          decision = await api('/manuals/' + session.runId + '/plan/', {controls, visited, page});
+          label = controls[decision.index]?.label;
+        }
+        let before,image,highlighted;
         for(let shot=0;shot<3;shot++){
           let stable=false;
           for(let settling=0;settling<5;settling++){
@@ -69,6 +80,10 @@ export function installManualCapture(apiFetch, serialize = operation => operatio
             if(stable&&!probe.evidence.quality?.pending_images)break;
           }
           if(!stable)throw new Error('A região ainda está mudando. Aguarde a página estabilizar e continue a coleta.');
+          tab=await ensureTab(session.tabId,session.url);
+          highlighted = label && await exec(session.tabId, manualNavigation, [session.url, decision.index, label, true]);
+          if (label && !highlighted) throw new Error('O controle mudou antes do print. Confira a aba e continue.');
+          if (highlighted) await wait(120);
           tab=await ensureTab(session.tabId,session.url);
           image=await chrome.tabs.captureVisibleTab(tab.windowId,{format:'jpeg',quality:92});
           const check=await exec(session.tabId,readManualViewport,[session.url,true]);
@@ -80,16 +95,58 @@ export function installManualCapture(apiFetch, serialize = operation => operatio
         const text=before.evidence.text.toLowerCase().trim().replace(/\s+/g,' ');
         let fingerprint='';
         if(text.length>=80&&before.evidence.quality.visual_content===false){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));const hash=[...new Uint8Array(bytes)].map(value=>value.toString(16).padStart(2,'0')).join('');fingerprint=[hash,before.evidence.scroll_y,before.evidence.viewport_width,before.evidence.viewport_height].join(':');}
-        if(fingerprint&&known.has(fingerprint))continue;
+        if(!highlighted&&fingerprint&&known.has(session.url+':'+fingerprint))continue;
         await ensureTab(session.tabId,session.url);
         const saved=await api('/manuals/'+session.runId+'/captures/',{key:'viewport-'+(index+1),order:index+1,url:before.url,title:before.evidence.heading||before.title,evidence:before.evidence,screenshot_base64:image});
         if(!saved.duplicate)accepted++;
-        if(fingerprint)known.add(fingerprint);
-        const message=accepted+' prints únicos salvos. Região '+(index+1)+' de '+positions.length+'.';
-        await state({message});await api('/manuals/'+session.runId+'/progress/',{message});
+        if(fingerprint)known.add(session.url+':'+fingerprint);
+        const message = accepted + ' prints salvos.';
+        await state({message});
+        await api('/manuals/' + session.runId + '/progress/', {message});
+        if (decision?.reason === 'done') break;
+        if (decision?.reason === 'error') throw new Error('Falha ao consultar a IA. Os prints foram preservados.');
+        if (decision?.reason === 'unsure') throw new Error('A IA nao identificou o proximo controle. Confira a aba e continue.');
+        if (highlighted) {
+          await wait(1400);
+          await ensureTab(session.tabId, session.url);
+          const opened = await exec(session.tabId, manualNavigation, [session.url, decision.index, label]);
+            if (opened?.url) {
+              const approved = await api('/manuals/' + session.runId + '/canonical/', {url:opened.url});
+              session.url = approved.url;
+              await state({url:session.url});
+              if (stopped) throw new Error('Coleta interrompida.');
+              await chrome.tabs.update(session.tabId, {url:session.url});
+              for (let attempt = 0; attempt < 60; attempt++) {
+                tab = await chrome.tabs.get(session.tabId);
+                if (stopped || tab.status === 'complete' && tab.url === session.url) break;
+                await wait(250);
+              }
+              await ensureTab(session.tabId, session.url);
+            }
+            if (opened) {
+              let viewport;
+              for (let attempt = 0; attempt < 12; attempt++) {
+                await wait(250);
+                await ensureTab(session.tabId, session.url);
+                viewport = await exec(session.tabId, readManualViewport, [session.url, true]);
+                if (viewport.scene.signature !== before.scene.signature || viewport.url !== before.url) break;
+              }
+              if (viewport.scene.signature === before.scene.signature && viewport.url === before.url) {
+                throw new Error('O controle foi aberto, mas a coleta ainda nao conseguiu identificar a nova tela. Confira a aba e continue.');
+              }
+              // Gives the new screen time to finish rendering before the stable capture checks.
+              await wait(screenSettleMs);
+              await ensureTab(session.tabId, session.url);
+              viewport = await exec(session.tabId, readManualViewport, [session.url, true]);
+              visited.push(label);
+              positions.splice(index + 1, positions.length, viewport.scene.scroll);
+              await state({plan:positions, visited});
+            }
+        }
       }
-      await api('/manuals/'+session.runId+'/captured/',{});
-      await state({active:false,status:'captured',message:'Capturas prontas. Volte ao OCTOR, confira os prints e gere seu manual.'});
+      await api('/manuals/' + session.runId + '/captured/', {});
+      if (visited.length) await api('/manuals/' + session.runId + '/generate/', {});
+      await state({active:false,status:'captured',message:visited.length ? 'Capturas prontas. O rascunho entrou na fila para revisao.' : 'Capturas prontas. Volte ao OCTOR para conferir os prints e gerar o rascunho.'});
       if(session.originTabId){const current=await chrome.tabs.get(session.tabId);const window=await chrome.windows.get(current.windowId);if(current.active&&window.focused)await chrome.tabs.update(session.originTabId,{active:true}).catch(()=>{});}
     } catch(error) {
       if(!stopped){const message=String(error.message||'Não foi possível ler a página.').slice(0,500);await state({active:false,status:'attention',message});await api('/manuals/'+session.runId+'/attention/',{message}).catch(()=>{});}
@@ -120,7 +177,7 @@ export function installManualCapture(apiFetch, serialize = operation => operatio
       const run=await api('/manuals/'+message.runId+'/');
       if(!['waiting','capturing'].includes(run.status))throw new Error('Esta coleta não está disponível.');
       const url=new URL(run.url);if(!['https:','http:'].includes(url.protocol)||url.username||url.password)throw new Error('URL não permitida.');
-      const tab=await chrome.tabs.create({url:run.url,active:true});session={runId:run.id,url:run.url,tabId:tab.id,originTabId:sender.tab?.id};await state(session);
+      const tab=await chrome.tabs.create({url:run.url,active:true});session={runId:run.id,url:run.url,objective:run.objective,plan:null,visited:[],tabId:tab.id,originTabId:sender.tab?.id};await state(session);
     }
     await state({...session,active:true,status:'starting',message:'Abrindo a página para leitura.'});
     void scan(session);return {success:true};

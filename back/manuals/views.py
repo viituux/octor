@@ -1,4 +1,6 @@
 """APIs privadas por criador: coleta, geração, revisão e conversão em guia rascunho."""
+from urllib.parse import urlsplit
+
 from django.conf import settings
 from django.db import transaction
 from django.http import FileResponse
@@ -10,7 +12,7 @@ from rest_framework.throttling import UserRateThrottle
 from guides.models import Guide,Step
 from .models import ManualRun,ManualCapture
 from .serializers import RunInput,CaptureInput,DocumentInput,safe_url,equivalent_page
-from .services import decode_capture,capture_fingerprints
+from .services import decode_capture,capture_fingerprints,plan_manual_navigation
 
 class ManualThrottle(UserRateThrottle):
     scope='manuals'
@@ -46,6 +48,18 @@ class Runs(Base):
 class Detail(Base):
     def get(self,request,pk):return Response(data(self.run(request,pk),True))
 
+    def delete(self, request, pk):
+        with transaction.atomic():
+            run = self.run(request, pk, True)
+            if run.status in {'waiting', 'capturing', 'queued', 'generating'}:
+                return Response({'detail': 'Interrompa a coleta ou geração antes de excluir o manual.'}, status=409)
+            screenshots = [capture.screenshot for capture in run.captures.all() if capture.screenshot]
+            run.delete()
+            for screenshot in screenshots:
+                transaction.on_commit(lambda file=screenshot: file.storage.delete(file.name), robust=True)
+        return Response(status=204)
+
+
 class Capture(Base):
     def post(self,request,pk):
         form=CaptureInput(data=request.data);form.is_valid(raise_exception=True);values=dict(form.validated_data)
@@ -61,7 +75,7 @@ class Capture(Base):
             image_hash,content_hash=capture_fingerprints(image,values['evidence'])
             for prior in run.captures.all():
                 old=prior.evidence
-                same_view=all(old.get(key)==values['evidence'].get(key) for key in ['scroll_y','viewport_width','viewport_height'])
+                same_view=prior.url == values['url'] and all(old.get(key)==values['evidence'].get(key) for key in ['scroll_y','viewport_width','viewport_height'])
                 if old.get('image_hash')==image_hash or (content_hash and old.get('content_hash')==content_hash and same_view and old.get('quality',{}).get('visual_content',True) is False and values['evidence'].get('quality',{}).get('visual_content',True) is False):
                     return Response({'id':prior.id,'duplicate':True})
             values['evidence'].update(image_hash=image_hash,content_hash=content_hash)
@@ -82,12 +96,31 @@ class Action(Base):
         if self.kwargs.get('action') in ['progress','attention','canonical']:return [ManualProgressThrottle()]
         return super().get_throttles()
     def post(self,request,pk,action):
+        if action == 'plan':
+            run = self.run(request, pk)
+            if run.status != 'capturing':
+                raise serializers.ValidationError('Coleta indisponivel.')
+            label = serializers.CharField(max_length=120)
+            control = serializers.DictField(child=label)
+            controls = serializers.ListField(child=control, max_length=40).run_validation(request.data.get('controls'))
+            visited = serializers.ListField(child=serializers.CharField(max_length=120), max_length=5).run_validation(request.data.get('visited', []))
+            if any(set(item) != {'label', 'kind'} or item['kind'] not in {'page', 'menu'} for item in controls):
+                raise serializers.ValidationError('Controles invalidos.')
+            page_fields = serializers.DictField(
+                child=serializers.CharField(max_length=700, allow_blank=True),
+            ).run_validation(request.data.get('page', {}))
+            page = {
+                'title': page_fields.get('title', '')[:200],
+                'text': page_fields.get('text', ''),
+                'url': urlsplit(run.url).hostname or '',
+            }
+            return Response(plan_manual_navigation(run.objective, controls, visited, page))
         if action=='generate':return self.generate(request,pk)
         if action=='approve':return self.approve(request,pk)
         with transaction.atomic():
             run=self.run(request,pk,True)
             if action=='canonical':
-                if run.status not in ['waiting','capturing'] or run.captures.exists():raise serializers.ValidationError('Não é possível trocar a página de uma coleta já registrada.')
+                if run.status not in ['waiting','capturing']:raise serializers.ValidationError('Não é possível trocar a página de uma coleta já registrada.')
                 url=serializers.URLField(max_length=2000,validators=[safe_url]).run_validation(request.data.get('url'))
                 if not equivalent_page(run.url,url):raise serializers.ValidationError('O endereço final está fora do escopo desta coleta. Inicie outra coleta com a URL final.')
                 run.url=url;run.message='Endereço final confirmado. Aguardando o conteúdo da página.'
@@ -130,7 +163,7 @@ class Action(Base):
             form=DocumentInput(data=request.data.get('document'),context={'capture_ids':set(run.captures.values_list('id',flat=True)),'capture_controls':{c.id:c.evidence.get('controls',[]) for c in run.captures.all()}});form.is_valid(raise_exception=True)
             if request.data.get('reviewed') is not True:raise serializers.ValidationError('Confirme que revisou as imagens e instruções.')
             document=dict(form.validated_data)
-            guide=Guide.objects.create(owner=request.user,title=document['title'],description=document['summary']+'\nManual de referência das telas observadas. Ações não foram executadas automaticamente.',status='draft')
+            guide=Guide.objects.create(owner=request.user,title=document['title'],description=document['summary'],status='draft')
             captures={c.id:c for c in run.captures.all()};order=0
             for section in document['sections']:
                 for item in section['steps']:

@@ -13,6 +13,7 @@ export class ManualService {
   constructor(private http:HttpClient,private zone:NgZone){}
   list(){return this.http.get<ManualRun[]>(this.base);}
   create(data:{url:string;objective:string;consent:boolean}){return this.http.post<ManualRun>(this.base,data);}
+  delete(id: string) { return this.http.delete<void>(this.base + id + '/'); }
   get(id:string){return this.http.get<ManualRun>(this.base+id+'/');}
   action(id:string,action:string,data:any={}){return this.http.post<ManualRun>(this.base+id+'/'+action+'/',data);}
   image(runId:string,captureId:number){return this.http.get(this.base+runId+'/captures/'+captureId+'/image/',{responseType:'blob'});}

@@ -9,8 +9,36 @@ import {firstValueFrom,Subscription,timer,exhaustMap,catchError,EMPTY} from 'rxj
 import {ManualService,ManualRun,ManualDocument,ManualStep,manualError} from '../../services/manual.service';
 @Component({standalone:true,imports:[CommonModule,FormsModule,RouterModule,OctorLoadingComponent],templateUrl:'./manuals.component.html',styleUrls:['./manuals.component.css']})
 export class ManualsComponent implements OnInit,OnDestroy {
-  url='';objective='Criar um manual de usuário em seções e passos das funcionalidades visíveis.';consent=false;autoGenerate=false;
+  url='';objective='';consent=false;autoGenerate=false;
   capturesReviewed = false;
+  deletionTarget: ManualRun | null = null;
+  deleting = false;
+  deletionError = '';
+
+  confirmDeletion(item: ManualRun, dialog: HTMLDialogElement): void {
+    this.deletionTarget = item;
+    this.deletionError = '';
+    dialog.showModal();
+  }
+
+  deleteManual(dialog: HTMLDialogElement): void {
+    const item = this.deletionTarget;
+    if (!item || this.deleting) return;
+    this.deleting = true;
+    this.deletionError = '';
+    this.service.delete(item.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => {
+        this.items = this.items.filter(manual => manual.id !== item.id);
+        this.deleting = false;
+        dialog.close();
+        this.notice = 'Manual excluído.';
+      },
+      error: error => {
+        this.deleting = false;
+        this.deletionError = manualError(error);
+      },
+    });
+  }
   readonly loadedCaptures = new Set<number>();
   items:ManualRun[]=[];run:ManualRun|null=null;document:ManualDocument|null=null;images:Record<number,string>={};imageErrors:Record<number,boolean>={};reviewed=false;
   busy=false;generating=false;canceling=false;loading=false;error='';notice='';private polling?:Subscription;private destroyRef=inject(DestroyRef);private destroyed=false;private imagePending=new Set<number>();private currentId:string|null=null;private generationError=false;
