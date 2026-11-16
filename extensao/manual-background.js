@@ -1,5 +1,9 @@
 /** Coleta somente leitura, vinculada a uma aba; nunca reutiliza ações sintéticas no gravador humano. */
 import {inspectManualPage,readManualViewport,manualNavigation} from './manual-observer.js';
+function clearManualOutline() {
+  document.getElementById('__octor_manual_outline__')?.remove();
+}
+
 // Registra a coleta de manuais no worker e reutiliza a mesma sessão HTTP da extensão.
 export function installManualCapture(apiFetch, serialize = operation => operation()) {
   let running=false,stopped=false,starting=false;
@@ -11,7 +15,7 @@ export function installManualCapture(apiFetch, serialize = operation => operatio
     options.signal=controller.signal;
     try {
       const operation=(async()=>{const response=await apiFetch((globalThis.OctorEnvironment?.apiBase ?? 'http://localhost:8000/api'),path,options);const data=await response.json();if(!response.ok)throw new Error(data.detail||'Não foi possível atualizar a coleta.');return data;})();
-      return await Promise.race([operation,new Promise((_,reject)=>{timeout=setTimeout(()=>{controller.abort();reject(new Error('O backend não respondeu em 10 segundos. Confira se a API do OCTOR está em execução.'));},10000);})]);
+      return await Promise.race([operation,new Promise((_,reject)=>{timeout=setTimeout(()=>{controller.abort();reject(new Error('O backend não respondeu em 45 segundos. Confira se a API do OCTOR está em execução.'));},45000);})]);
     } finally {clearTimeout(timeout);}
   }
   const exec=async(tabId,func,args)=>{const result=await chrome.scripting.executeScript({target:{tabId},func,args});return result[0]?.result;};
@@ -52,64 +56,169 @@ export function installManualCapture(apiFetch, serialize = operation => operatio
       await api('/manuals/'+session.runId+'/progress/',{message:'Conteúdo identificado. Preparando '+info.positions.length+' prints.'});
       const existing=await api('/manuals/'+session.runId+'/');const done=new Set(existing.captures.map(c=>c.order));
       const known=new Set(existing.captures.filter(c=>c.evidence.content_hash).map(c=>[c.url,c.evidence.content_hash,c.evidence.scroll_y,c.evidence.viewport_width,c.evidence.viewport_height].join(':')));
-      const positions = session.plan || [originalScroll, ...info.positions.filter(y => y !== originalScroll)];
-      const visited = session.visited || [];
+      const freshPositions = [originalScroll, ...info.positions.filter(y => y !== originalScroll)];
+      const resuming = Boolean(existing.agent_state?.resume_required || existing.agent_state?.regenerate_requested);
+      const positions = resuming ? freshPositions : (session.plan || freshPositions);
+      // Keep original captures immutable and give the new observation its own order.
+      const captureOffset = resuming ? Math.max(0, ...done) : 0;
+      if (captureOffset >= 6) throw new Error('Limite de prints atingido. Inicie uma nova coleta para documentar esta tela.');
+      await state({agentState: existing.agent_state || {}});
+      const resumeRequired = existing.agent_state?.resume_required;
+      const visited = resumeRequired ? [] : (session.visited || []);
+      let observationTicket;
+      let nextProcedure = false;
+      if (resumeRequired) {
+        const current = await chrome.tabs.get(session.tabId);
+        const resumed = await api('/manuals/' + session.runId + '/resume-agent/', {url: current.url});
+        observationTicket = resumed.agent_state.observation_ticket;
+      }
+      const accountFlow = new URL(session.url).hostname === 'www.youtube.com' &&
+        /(?:trocar|troca|mudar|mude|switch|alternar).{0,30}(?:conta|account)/i.test(session.objective || '');
       const screenSettleMs = 1200;
+      const debug = (await chrome.storage.local.get('manualCaptureDebug')).manualCaptureDebug === true &&
+        await chrome.permissions.contains({permissions: ['downloads']});
       await state({plan:positions});
       let accepted = existing.captures.length;
-      for (let index = 0; index < positions.length && index < 6; index++) {
-        if (done.has(index + 1)) continue;
+      for (let index = 0; index < positions.length && captureOffset + index < 6; index++) {
+        const order = captureOffset + index + 1;
+        if (done.has(order)) continue;
         await ensureTab(session.tabId,session.url);
         const positioned=await exec(session.tabId,inspectManualPage,[session.url,positions[index]]);
         if(positioned.attention)throw new Error(positioned.attention);
         let controls = [], decision, label;
-        if (session.objective && index < 5 && (index === 0 || visited.length === index)) {
-          controls = await exec(session.tabId, manualNavigation, [session.url]) || [];
-          const viewport = await exec(session.tabId, readManualViewport, [session.url, true]);
+        if (session.objective && (order < 6 || resuming) && (nextProcedure || observationTicket || index === 0 || visited.length > 0)) {
+          // Hidratação/tradução pode trocar rótulos durante o print. Observe novamente,
+          // sem transformar uma tela transitória em passo ou conclusão do agente.
+          for (let observationAttempt = 0; observationAttempt < 4; observationAttempt++) {
+          controls = await exec(session.tabId, manualNavigation, [session.url, null, '', false, accountFlow]) || [];
+          const viewport = await exec(session.tabId, readManualViewport, [session.url]);
           const page = {title: viewport.title, text: viewport.evidence.text.slice(0, 700)};
-          decision = await api('/manuals/' + session.runId + '/plan/', {controls, visited, page});
+          await wait(550);
+          const observedTab = await ensureTab(session.tabId, session.url);
+          const screenshot = await chrome.tabs.captureVisibleTab(observedTab.windowId, {format:'jpeg', quality:75});
+          await ensureTab(session.tabId, session.url);
+          const observed = await exec(session.tabId, readManualViewport, [session.url, true]);
+          const currentControls = await exec(session.tabId, manualNavigation, [session.url, null, '', false, accountFlow]) || [];
+          const sameViewport = ['url', 'scroll', 'width', 'height'].every(
+            key => observed.scene[key] === viewport.scene[key],
+          );
+          if (sameViewport && JSON.stringify(currentControls) === JSON.stringify(controls)) {
+            decision = await api('/manuals/' + session.runId + '/plan/', {
+              controls, visited, page, screenshot, observation_ticket: observationTicket, observed_url: session.url,
+            })
+              .catch(() => ({index: null, reason: 'error'}));
+            break;
+          } else {
+            await wait(700);
+          }
+          }
+          if (!decision) throw new Error('A tela mudou durante a observação. Aguarde o carregamento ou a tradução terminar e continue a coleta. Nenhum passo desta tela foi salvo.');
+          if (accountFlow && decision.reason === 'done' && visited.length < 2) {
+            decision = {index: null, reason: 'unsure'};
+          }
+          if (decision.reason !== 'error' && decision.reason !== 'pending') observationTicket = undefined;
+          nextProcedure = false;
           label = controls[decision.index]?.label;
+          if (decision.reason === 'next' && !label) {
+            throw new Error('A ação não corresponde a um controle observado. Observe a tela novamente antes de registrar o passo.');
+          }
+          await wait(550);
         }
-        let before,image,highlighted;
+        let before,image,highlighted,rawImage;
         for(let shot=0;shot<3;shot++){
           let stable=false;
           for(let settling=0;settling<5;settling++){
             before=await exec(session.tabId,readManualViewport,[session.url]);await wait(300);
             const probe=await exec(session.tabId,readManualViewport,[session.url,true]);
-            stable=before.scene.signature===probe.scene.signature;
-            if(stable&&!probe.evidence.quality?.pending_images)break;
+            stable = before.scene.signature === probe.scene.signature && !probe.evidence.quality?.pending_images;
+            if (stable) break;
           }
           if(!stable)throw new Error('A região ainda está mudando. Aguarde a página estabilizar e continue a coleta.');
           tab=await ensureTab(session.tabId,session.url);
-          highlighted = label && await exec(session.tabId, manualNavigation, [session.url, decision.index, label, true]);
+          if (debug) {
+            await exec(session.tabId, clearManualOutline, []);
+            rawImage = await chrome.tabs.captureVisibleTab(tab.windowId, {format:'jpeg',quality:92});
+            await wait(550);
+            await ensureTab(session.tabId, session.url);
+          }
+          highlighted = label && await exec(session.tabId, manualNavigation, [session.url, decision.index, label, true, accountFlow]);
           if (label && !highlighted) throw new Error('O controle mudou antes do print. Confira a aba e continue.');
           if (highlighted) await wait(120);
           tab=await ensureTab(session.tabId,session.url);
-          image=await chrome.tabs.captureVisibleTab(tab.windowId,{format:'jpeg',quality:92});
+          try {
+            image=await chrome.tabs.captureVisibleTab(tab.windowId,{format:'jpeg',quality:92});
+          } finally {
+            await exec(session.tabId, clearManualOutline, []);
+          }
           const check=await exec(session.tabId,readManualViewport,[session.url,true]);
           if(check.scene.signature===before.scene.signature&&check.scene.url===before.scene.url&&check.scene.scroll===before.scene.scroll&&check.scene.width===before.scene.width&&check.scene.height===before.scene.height)break;
           image=null;await wait(550);
         }
         if(!image)throw new Error('A tela mudou durante os prints. Confira a aba e retome a coleta.');
+        if (debug) {
+          const folder = 'OCTOR-debug/' + session.runId + '/' + order + '-' + Date.now();
+          const metadata = {
+            url: before.url, title: before.title, timestamp: new Date().toISOString(),
+            viewport: {width: before.scene.width, height: before.scene.height},
+            scroll: before.scene.scroll, devicePixelRatio: before.scene.devicePixelRatio,
+            zoom: await chrome.tabs.getZoom(session.tabId), controls, selectedLabel: label ?? null,
+            pendingImages: before.evidence.quality?.pending_images ?? 0,
+          };
+          const files = {
+            'raw.jpg': rawImage, 'outlined.jpg': image,
+            'observation.json': 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(metadata, null, 2)),
+          };
+          for (const [name, url] of Object.entries(files)) {
+            await chrome.downloads.download({url, filename: folder + '/' + name, saveAs: false});
+          }
+        }
         before.evidence.quality={...before.evidence.quality,stable:true};
         const text=before.evidence.text.toLowerCase().trim().replace(/\s+/g,' ');
         let fingerprint='';
         if(text.length>=80&&before.evidence.quality.visual_content===false){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));const hash=[...new Uint8Array(bytes)].map(value=>value.toString(16).padStart(2,'0')).join('');fingerprint=[hash,before.evidence.scroll_y,before.evidence.viewport_width,before.evidence.viewport_height].join(':');}
         if(!highlighted&&fingerprint&&known.has(session.url+':'+fingerprint))continue;
         await ensureTab(session.tabId,session.url);
-        const saved=await api('/manuals/'+session.runId+'/captures/',{key:'viewport-'+(index+1),order:index+1,url:before.url,title:before.evidence.heading||before.title,evidence:before.evidence,screenshot_base64:image});
+        const saved=await api('/manuals/'+session.runId+'/captures/',{key:'viewport-'+order,order,url:before.url,title:before.evidence.heading||before.title,evidence:before.evidence,screenshot_base64:image});
         if(!saved.duplicate)accepted++;
         if(fingerprint)known.add(session.url+':'+fingerprint);
         const message = accepted + ' prints salvos.';
         await state({message});
         await api('/manuals/' + session.runId + '/progress/', {message});
-        if (decision?.reason === 'done') break;
+        if (decision?.reason === 'pending') {
+          const current = await api('/manuals/' + session.runId + '/');
+          await state({agentState: current.agent_state});
+          throw new Error('A coleta aguarda a revisão do plano ou uma resposta no OCTOR.');
+        }
+        const procedureState = {done: 'concluido', unsure: 'precisa_usuario', blocked: 'bloqueado'}[decision?.reason];
+        if (procedureState) {
+          if (existing.agent_state?.classification || decision.reason === 'done') {
+            const finished = await api('/manuals/' + session.runId + '/finish-procedure/', {
+              state: procedureState,
+              reason: decision.message || (decision.reason === 'done' ? 'Objetivo atingido.' : 'A coleta precisa de atenção.'),
+              capture_id: saved.id,
+            });
+            await state({agentState: finished.agent_state});
+            const {approved_plan: queue, procedures} = finished.agent_state;
+            if (queue && procedures.length < queue.length && order < 6) {
+              visited.length = 0;
+              positions.splice(index + 1, positions.length, before.scene.scroll);
+              nextProcedure = true;
+              await state({plan: positions, visited});
+              continue;
+            }
+            if (queue && procedures.length === queue.length) break;
+          }
+          if (decision.reason === 'done') break;
+          throw new Error('Procedimento incompleto. Os prints foram preservados.');
+        }
         if (decision?.reason === 'error') throw new Error('Falha ao consultar a IA. Os prints foram preservados.');
-        if (decision?.reason === 'unsure') throw new Error('A IA nao identificou o proximo controle. Confira a aba e continue.');
         if (highlighted) {
           await wait(1400);
           await ensureTab(session.tabId, session.url);
-          const opened = await exec(session.tabId, manualNavigation, [session.url, decision.index, label]);
+          const opened = await exec(session.tabId, manualNavigation, [session.url, decision.index, label, false, accountFlow, decision.value ?? null]);
+          if (!opened) {
+            throw new Error('O controle mudou ou rejeitou o preenchimento. O print foi preservado.');
+          }
             if (opened?.url) {
               const approved = await api('/manuals/' + session.runId + '/canonical/', {url:opened.url});
               session.url = approved.url;
@@ -129,9 +238,9 @@ export function installManualCapture(apiFetch, serialize = operation => operatio
                 await wait(250);
                 await ensureTab(session.tabId, session.url);
                 viewport = await exec(session.tabId, readManualViewport, [session.url, true]);
-                if (viewport.scene.signature !== before.scene.signature || viewport.url !== before.url) break;
+                if (opened.typed || viewport.scene.signature !== before.scene.signature || viewport.url !== before.url) break;
               }
-              if (viewport.scene.signature === before.scene.signature && viewport.url === before.url) {
+              if (!opened.typed && viewport.scene.signature === before.scene.signature && viewport.url === before.url) {
                 throw new Error('O controle foi aberto, mas a coleta ainda nao conseguiu identificar a nova tela. Confira a aba e continue.');
               }
               // Gives the new screen time to finish rendering before the stable capture checks.
@@ -167,6 +276,16 @@ export function installManualCapture(apiFetch, serialize = operation => operatio
       if(session&&message.runId===session.runId){stopped=true;await exec(session.tabId,inspectManualPage,[session.url,0,true]).catch(()=>{});await state({active:false,status:'cancelled',message:'Coleta interrompida.'});await api('/manuals/'+session.runId+'/cancel/',{});}
       return {success:true};
     }
+    if (message.action === 'REVIEW_MANUAL_AGENT') {
+      const session = saved.manualCapture;
+      if (!panel || !session || session.active || running) throw new Error('A coleta precisa estar pausada.');
+      const review = message.review;
+      if (!['approve-plan', 'answer-question', 'regenerate-plan'].includes(review)) throw new Error('Revisão inválida.');
+      const tab = await chrome.tabs.get(session.tabId);
+      const result = await api('/manuals/' + session.runId + '/' + review + '/', {...message.payload, url: tab.url});
+      await state({agentState: result.agent_state, message: 'Revisão salva. Use Continuar coleta.'});
+      return {success: true};
+    }
     if(running||saved.isRecording||saved.playback)throw new Error('Finalize a captura ou tutorial em andamento antes de iniciar outra coleta.');
     let session;
     if(message.action==='CONTINUE_MANUAL'){
@@ -183,7 +302,7 @@ export function installManualCapture(apiFetch, serialize = operation => operatio
     void scan(session);return {success:true};
   }
   const listener=(message,sender,respond)=>{
-    if(!['START_MANUAL','STOP_MANUAL','CONTINUE_MANUAL','PING_MANUAL'].includes(message.action))return false;
+    if(!['START_MANUAL','STOP_MANUAL','CONTINUE_MANUAL','PING_MANUAL','REVIEW_MANUAL_AGENT'].includes(message.action))return false;
     if(message.action==='PING_MANUAL'){handle(message,sender).then(respond,error=>respond({success:false,error:error.message}));return true;}
     if(message.action!=='STOP_MANUAL'){if(starting||running){respond({success:false,error:'Já existe uma coleta em andamento.'});return false;}starting=true;}
     serialize(()=>handle(message,sender)).then(respond,error=>respond({success:false,error:error.message})).finally(()=>{if(message.action!=='STOP_MANUAL')starting=false;});return true;

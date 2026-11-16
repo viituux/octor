@@ -1,7 +1,7 @@
 /** Leitura visual somente: regiões úteis, máscaras temporárias e evidências medidas na viewport. */
 export function inspectManualPage(expectedUrl, position = null, cleanup = false, objective = '') {
   const maskId='__octor_manual_privacy_mask__',styleId='__octor_manual_capture_style__';
-  if(cleanup){document.getElementById(maskId)?.remove();document.getElementById(styleId)?.remove();return {ok:true};}
+  if(cleanup){document.getElementById(maskId)?.remove();document.getElementById(styleId)?.remove();document.getElementById('__octor_manual_outline__')?.remove();return {ok:true};}
   const normalized=value=>{const u=new URL(value);u.hash='';return u.href;};
   if(normalized(location.href)!==normalized(expectedUrl))return {attention:'A URL mudou. Autorize outra coleta com o endereço final.'};
   document.getElementById(maskId)?.remove();
@@ -63,7 +63,8 @@ export function readManualViewport(expectedUrl, probe = false) {
   }
   const clean=value=>String(value||'').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[e-mail oculto]').replace(/\s+/g,' ').trim();
   const main=document.querySelector('main,[role=main]')||document.body;
-  const roots=[main];if(scrollY<innerHeight*.25&&main!==document.body)roots.push(...document.querySelectorAll('header nav,body>nav'));
+  // Menus portais e cabeçalhos também fazem parte da tela após abrir um controle.
+  const roots=[main,...document.querySelectorAll('header,body>nav,[role=menu],[role=dialog],details[open]')];
   const nodes=[...new Set(roots.flatMap(root=>[...root.querySelectorAll('h1,h2,h3,p,label,button,a,input:not([type=hidden]),select,[role=button],[role=tab]')]))].slice(0,2000);
   const controls=[],texts=[],seen=new Set();let length=0;
   for(const el of nodes){
@@ -84,33 +85,40 @@ export function readManualViewport(expectedUrl, probe = false) {
   if([...main.querySelectorAll('iframe')].some(visible))warnings.push('Há conteúdo em iframe: seus controles internos não foram inspecionados.');
   const heading=[...main.querySelectorAll('h1,h2,h3')].find(visible)?.innerText||document.title;
   const text=texts.join(' ').slice(0,5000);
-  const scene={url:u.href,scroll:scrollY,width:innerWidth,height:innerHeight,signature:JSON.stringify({text,controls,images:images.map(img=>[img.complete,img.naturalWidth,img.naturalHeight]),scroll:scrollY,width:innerWidth,height:innerHeight})};
+  const scene={url:u.href,scroll:scrollY,width:innerWidth,height:innerHeight,devicePixelRatio,signature:JSON.stringify({text,controls,images:images.map(img=>[img.complete,img.naturalWidth,img.naturalHeight]),scroll:scrollY,width:innerWidth,height:innerHeight,devicePixelRatio})};
   return {url:u.href,title:document.title.slice(0,200)||'Página analisada',evidence:{heading:clean(heading).slice(0,200),text,controls,scroll_y:Math.max(0,Math.round(scrollY)),viewport_width:innerWidth,viewport_height:innerHeight,page_height:document.documentElement.scrollHeight,quality:{warnings,pending_images:pending,masked_fields:masked.length,stable:false,visual_content:images.length>0||[...main.querySelectorAll('video,canvas,iframe')].some(visible)}},scene};
 }
 
 
 /** Seleciona novamente o controle na pagina antes de qualquer interacao. */
-export function manualNavigation(expectedUrl, index = null, expectedLabel = '', preview = false) {
+export function manualNavigation(expectedUrl, index = null, expectedLabel = '', preview = false, accountFlow = false, value = null) {
   if (location.href.split('#')[0] !== expectedUrl.split('#')[0]) return null;
   if (document.querySelector('input[type=password]:not([hidden])')) return null;
+  const searchSelector = 'input[type=search],input[type=text][role=searchbox],input:not([type])[role=searchbox]';
   const candidates = [];
   const isYouTube = location.hostname === 'www.youtube.com';
   const avatar = isYouTube ? document.querySelector('ytd-masthead button#avatar-btn') : null;
-  for (const candidate of new Set([avatar, ...document.querySelectorAll('a[href],details:not([open]) > summary,button[aria-haspopup="menu"][aria-expanded="false"],[role="button"][aria-haspopup="menu"][aria-expanded="false"],ytd-account-item-renderer,ytd-compact-link-renderer')])) {
+  for (const candidate of new Set([avatar, ...document.querySelectorAll(searchSelector + ',a[href],details:not([open]) > summary,button[aria-haspopup="menu"]:not([aria-expanded="true"]),button[aria-haspopup="true"]:not([aria-expanded="true"]),[role="button"][aria-haspopup="menu"]:not([aria-expanded="true"]),[role="button"][aria-haspopup="true"]:not([aria-expanded="true"]),ytd-account-item-renderer,ytd-compact-link-renderer,yt-list-item-view-model')])) {
     if (!candidate) continue;
-    const accountItem = candidate.matches('ytd-account-item-renderer,ytd-compact-link-renderer');
+    const accountItem = candidate.matches('ytd-account-item-renderer,ytd-compact-link-renderer,yt-list-item-view-model');
     const element = accountItem
-      ? candidate.querySelector('a,button,tp-yt-paper-item,[role="menuitem"]') || candidate
+      ? candidate.querySelector('a,button,tp-yt-paper-item,[role="menuitem"],[role="button"]') || candidate
       : candidate;
     const rect = element.getBoundingClientRect();
     const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-    if (!hit || !element.contains(hit) || element.closest('[inert],[aria-hidden=true],[aria-disabled=true],:disabled,form')) continue;
-    const label = (element === avatar ? 'Menu da conta' : element.getAttribute('aria-label') || element.innerText || candidate.innerText || element.title || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+    if (!hit || !element.contains(hit) || element.closest('[inert],[aria-hidden=true],[aria-disabled=true],:disabled')) continue;
+    const search = element.matches(searchSelector) && !element.readOnly && !element.disabled;
+    if (element.matches('input') && !search) continue;
+    const form = element.closest('form');
+    if (form && (!search || form.querySelector('input[type=password]'))) continue;
+    const label = (element === avatar ? 'Menu da conta' : element.getAttribute('aria-label') || element.innerText || candidate.innerText || element.title || element.placeholder || '').trim().replace(/\s+/g, ' ').slice(0, 120);
     if (!label || /@|logout|sign out|sair|excluir|delete|comprar|pagar|confirmar|remover|submit|desativar|unsubscribe|cancelar|checkout|purchase|add account|adicionar conta/i.test(label)) continue;
     let url = null;
     const youtubeSwitch = isYouTube &&
       /^(trocar de conta|mudar de conta|switch account)$/i.test(label) && accountItem;
     if (accountItem && !youtubeSwitch) continue;
+    if (accountFlow && !youtubeSwitch && element !== avatar) continue;
+    if (candidates.some(candidate => candidate.element === element)) continue;
     if (!youtubeSwitch && element.matches('a')) {
       const destination = new URL(element.href);
       if (element.hasAttribute('download') || destination.origin !== location.origin ||
@@ -118,17 +126,20 @@ export function manualNavigation(expectedUrl, index = null, expectedLabel = '', 
           /logout|signout|delete|checkout|unsubscribe|remove|revoke/i.test(destination.pathname)) continue;
       url = destination.href;
     }
-    candidates.push({element, label, url, kind: url ? 'page' : 'menu'});
+    candidates.push({element, label, url, kind: search ? 'search' : url ? 'page' : 'menu'});
   }
   candidates.sort((a, b) => Number(a.kind === 'page') - Number(b.kind === 'page'));
   candidates.length = Math.min(40, candidates.length);
   if (index === null) return candidates.map(({label, kind}) => ({label, kind}));
-  const target = candidates[index];
-  if (!target || target.label !== expectedLabel ||
-      candidates.filter(candidate => candidate.label === expectedLabel).length !== 1) return null;
+  // A ordem do DOM pode mudar enquanto o Gemini processa a captura.
+  const matches = candidates.filter(candidate => candidate.label === expectedLabel);
+  if (matches.length !== 1) return null;
+  const [target] = matches;
   if (preview) {
     const bounds = target.element.getBoundingClientRect();
+    document.getElementById('__octor_manual_outline__')?.remove();
     const outline = document.createElement('div');
+    outline.id = '__octor_manual_outline__';
     outline.setAttribute('aria-hidden', 'true');
     Object.assign(outline.style, {
       position: 'fixed', pointerEvents: 'none', zIndex: '2147483647',
@@ -138,9 +149,19 @@ export function manualNavigation(expectedUrl, index = null, expectedLabel = '', 
       borderRadius: '5px', boxShadow: '0 0 0 1px #fff',
     });
     document.documentElement.append(outline);
-    setTimeout(() => outline.remove(), 1400);
+    // O controlador remove após capturar; atrasos do navegador não apagam o destaque.
     return true;
   }
+  if (target.kind === 'search') {
+    if (typeof value !== 'string' || !value.trim() || value.length > 150) return null;
+    target.element.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(target.element, value);
+    target.element.dispatchEvent(new Event('input', {bubbles: true}));
+    return target.element.isConnected && target.element.value === value
+      ? {opened: true, typed: true}
+      : null;
+  }
+  if (value !== null) return null;
   if (target.url) return {url: target.url};
   target.element.click();
   return {opened: true};

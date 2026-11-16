@@ -67,7 +67,7 @@ O Compose mantém nomes legados de PostgreSQL e pode conflitar com o banco local
 - Treinamentos com cinco perguntas obrigatórias nas novas versões, ranking por acertos/tempo, estrelas e comentários.
 - Notificações internas com controle de leitura.
 - **Me guie:** abre o sistema e destaca elementos; o usuário realiza as ações.
-- **Manual por URL:** coleta até seis regiões de uma página e gera um rascunho para revisão com Qwen/OpenRouter no ambiente configurado.
+- **Manual por URL:** coleta até seis regiões de uma página e gera um rascunho para revisão com Gemini no backend.
 
 As demais funções de IA mantêm a configuração Gemini. Chaves pertencem somente ao backend. O Manual por URL não navega autonomamente entre páginas e seus passos de referência não habilitam Me guie. O pipeline de vídeo é simulado e não produz arquivo final real. Não há captura desktop ou mascote. Treinamentos antigos preservam seu fluxo original.
 
@@ -87,3 +87,12 @@ node --test extensao/tests/*.test.cjs
 Em `front/`, execute `npm run build`. O guia técnico inclui os demais testes, dados de demonstração e roteiro de aceitação.
 
 Repositório: [viituux/octor](https://github.com/viituux/octor).
+
+### Gemini no Manual por URL
+
+Instale as dependências com `python -m pip install -r back/requirements.txt`.
+Configure `GEMINI_API_KEY` e `GEMINI_MODEL` em `back/.env`. Use um modelo Gemini
+com entrada de imagem e saída JSON e reinicie a API e o worker do manual.
+Carregue a extensão atualizada, abra Manual por URL e informe um objetivo.
+Para validar a troca de conta, use um perfil de teste no YouTube, confira o
+menu e a lista de contas capturados e revise o rascunho antes de criar o guia.

@@ -228,10 +228,78 @@ document.addEventListener("DOMContentLoaded", /* Trata evento DOMContentLoaded n
 
 // Acompanhar a coleta sem misturar seus prints com o gravador de cliques.
 document.addEventListener('DOMContentLoaded', async () => {
+  const debug = document.getElementById('manualCaptureDebug');
+  debug.checked = Boolean((await chrome.storage.local.get('manualCaptureDebug')).manualCaptureDebug);
+  debug.addEventListener('change', async () => {
+    if (debug.checked) debug.checked = await chrome.permissions.request({permissions: ['downloads']}).catch(() => false);
+    await chrome.storage.local.set({manualCaptureDebug: debug.checked});
+  });
   const render = async () => {
     const {manualCapture:session}=await chrome.storage.local.get('manualCapture');
-    document.getElementById('manualStatusPanel').classList.toggle('hidden', !session || session.status === 'captured');
+    document.getElementById('manualStatusPanel').classList.toggle('hidden', !session || (session.status === 'captured' && !session.agentState?.procedures?.length));
     document.getElementById('manualCaptureMessage').textContent=session?.message||'';
+    const review = document.getElementById('manualAgentReview');
+    review.replaceChildren();
+    const agent = session?.agentState;
+    const pending = agent?.pending;
+    const addText = text => {
+      const line = document.createElement('p');
+      line.textContent = text;
+      review.append(line);
+    };
+    const button = (label, action, parent = review) => {
+      const control = document.createElement('button');
+      control.type = 'button';
+      control.className = 'btn btn-secondary';
+      control.textContent = label;
+      control.addEventListener('click', action);
+      parent.append(control);
+      return control;
+    };
+    const submit = async (operation, payload) => {
+      try {
+        const response = await chrome.runtime.sendMessage({action: 'REVIEW_MANUAL_AGENT', review: operation, payload});
+        if (!response?.success) throw new Error(response?.error || 'Falha ao revisar.');
+      } catch (error) {
+        document.getElementById('manualCaptureMessage').textContent = error.message;
+      }
+    };
+    for (const procedure of agent?.procedures || []) {
+      const status = {concluido: 'Concluído', precisa_usuario: 'Precisa de você', bloqueado: 'Bloqueado'};
+      addText(procedure.title + ' · ' + status[procedure.state] + ' · ' + procedure.reason);
+    }
+    if (pending && !agent.regenerate_requested) {
+      if (Date.parse(pending.expires_at) <= Date.now()) {
+        addText('A revisão expirou.');
+        button('Solicitar nova revisão', () => submit('regenerate-plan', {}));
+      } else if (pending.kind === 'question') {
+        addText(pending.question);
+        const answer = document.createElement('input');
+        answer.setAttribute('aria-label', 'Resposta');
+        answer.maxLength = 1000;
+        review.append(answer);
+        button('Enviar resposta', () => submit('answer-question', {answer: answer.value}));
+      } else {
+        const list = document.createElement('ol');
+        review.append(list);
+        for (const [index, title] of pending.items.entries()) {
+          const row = document.createElement('li');
+          list.append(row);
+          row.dataset.index = String(index);
+          const input = document.createElement('input');
+          input.value = title;
+          input.maxLength = 200;
+          input.setAttribute('aria-label', 'Título do procedimento');
+          row.append(input);
+          button('Subir', () => { if (row.previousElementSibling) list.insertBefore(row, row.previousElementSibling); }, row);
+          button('Remover', () => row.remove(), row);
+        }
+        button('Aprovar seleção', () => submit('approve-plan', {
+          items: Array.from(list.children, row => ({index: Number(row.dataset.index), title: row.querySelector('input').value})),
+        }));
+      }
+    }
+
     document.getElementById('btnManualContinue').classList.toggle('hidden',session?.status!=='attention');
     document.getElementById('btnManualStop').classList.toggle('hidden',!session?.active);
   };

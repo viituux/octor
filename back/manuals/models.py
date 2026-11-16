@@ -17,6 +17,7 @@ class ManualRun(models.Model):
     objective=models.CharField(max_length=1000)
     status=models.CharField(max_length=20,default='waiting')
     message=models.CharField(max_length=500,blank=True,default='')
+    agent_state = models.JSONField(default=dict, blank=True)
     document=models.JSONField(default=dict,blank=True)
     guide=models.ForeignKey('guides.Guide',on_delete=models.SET_NULL,null=True,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)

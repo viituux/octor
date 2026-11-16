@@ -16,7 +16,7 @@
 <ng-container *ngIf="run"><section class="panel status"><div><span class="eyebrow">{{statusLabel(run.status)}}</span><h2>Coleta e preparação</h2><p [attr.role]="run.status==='failed' ? 'alert' : null">{{run.message || 'Abra a coleta pela extensão para começar.'}}</p><p class="hint">{{run.url}}</p></div><div class="buttons"><button *ngIf="run.status==='waiting' || run.status==='capturing'" (click)="start()" [disabled]="busy">Abrir coleta</button><button *ngIf="run.status==='waiting' || run.status==='capturing' || run.status==='queued' || run.status==='generating'" (click)="cancel()" [disabled]="canceling">Interromper</button><button (click)="refreshCaptures(run.id)" [disabled]="busy">Atualizar</button></div></section>
 <p *ngIf="run.status==='queued'" class="notice" role="status"><app-octor-loading></app-octor-loading>Aguardando processamento. Você pode sair desta página e voltar mais tarde.</p>
 <p *ngIf="generating || run.status==='generating'" class="notice" role="status"><app-octor-loading></app-octor-loading>Gerando o manual com as capturas…</p>
-<p class="notice">Este é um manual de referência das telas observadas. A coleta não executa cliques, compras ou envios. Comportamentos não testados precisam ser conferidos pelo criador.</p>
+<p class="notice">A coleta pode abrir menus, navegar na aba atual e preencher campos de busca. Compras e envios ficam a cargo do usuário. Confira os passos e as capturas antes de aprovar o manual.</p>
 <section class="panel" *ngIf="run.captures?.length && !document"><h2>Confira as capturas</h2><p>Verifique as imagens e confirme que elas podem ser enviadas ao serviço de IA.</p><div class="capture-grid"><figure *ngFor="let capture of run.captures"><img *ngIf="images[capture.id]" [src]="images[capture.id]" [alt]="capture.title" (load)="loadedCaptures.add(capture.id)" (error)="imageFailed(capture.id)"><p *ngIf="imageErrors[capture.id]">Não foi possível carregar esta imagem. Use Atualizar para tentar novamente.</p><figcaption>{{capture.order}}. {{capture.title}} <small>{{capture.evidence.quality?.stable?"Layout estável":"Captura anterior"}}</small></figcaption><ul class="quality-notes" *ngIf="capture.evidence.quality?.warnings?.length"><li *ngFor="let warning of capture.evidence.quality.warnings">{{warning}}</li></ul></figure></div><ng-container *ngIf="run.status==='captured' || run.status==='failed'">
   <label class="check"><input type="checkbox" [(ngModel)]="capturesReviewed" [disabled]="busy || !capturesAvailable"> Conferi as capturas e autorizo o envio à IA.</label>
   <button type="button" class="primary" (click)="generate()" [disabled]="busy || !capturesAvailable || !capturesReviewed">{{generating?'Gerando manual…':'Enviar à IA e gerar manual'}}</button>
@@ -36,21 +36,12 @@
       </select>
     </div>
     <div>
-      <label [for]="'capture-'+sectionIndex+'-'+stepIndex">Print de referência</label>
-      <select [id]="'capture-'+sectionIndex+'-'+stepIndex" [name]="'capture-'+sectionIndex+'-'+stepIndex" [(ngModel)]="step.capture_id" (ngModelChange)="step.control_index=null;reviewed=false">
-        <option *ngFor="let capture of run.captures" [ngValue]="capture.id">{{capture.order}}. {{capture.title}}</option>
-      </select>
       <figure class="evidence-figure" *ngIf="images[step.capture_id]">
         <img [src]="images[step.capture_id]" alt="Print de referência do passo" (load)="loadedCaptures.add(step.capture_id)" (error)="imageFailed(step.capture_id)">
         <span *ngIf="highlight(step) as rect" class="target-outline" [style.left.%]="rect.left" [style.top.%]="rect.top" [style.width.%]="rect.width" [style.height.%]="rect.height" aria-hidden="true"></span>
       </figure>
       <p *ngIf="imageErrors[step.capture_id]" class="hint">Não foi possível carregar este print. Use Atualizar para tentar novamente.</p>
       <p *ngIf="!images[step.capture_id] && !imageErrors[step.capture_id]" class="hint">Carregando o print…</p>
-      <label [for]="'target-'+sectionIndex+'-'+stepIndex">Destaque no print</label>
-      <select [id]="'target-'+sectionIndex+'-'+stepIndex" [name]="'target-'+sectionIndex+'-'+stepIndex" [(ngModel)]="step.control_index" (ngModelChange)="reviewed=false">
-        <option [ngValue]="null">Sem destaque</option>
-        <option *ngFor="let control of controls(step)" [ngValue]="control.index">{{control.label}}{{control.disabled?' (desabilitado)':''}}</option>
-      </select>
     </div>
   </div>
   <button type="button" (click)="removeStep(sectionIndex,stepIndex)" [disabled]="busy">Remover passo do rascunho</button>

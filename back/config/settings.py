@@ -210,9 +210,6 @@ LLM_MODEL = os.getenv('LLM_MODEL', '').strip()
 
 # Configuração independente: somente o Manual por URL usa este provedor.
 # Sem override, preserva a integração Gemini existente.
-MANUAL_LLM_PROVIDER = os.getenv('MANUAL_LLM_PROVIDER', '').strip().lower()
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '').strip()
-MANUAL_LLM_MODEL = os.getenv('MANUAL_LLM_MODEL', 'qwen/qwen3-vl-30b-a3b-instruct').strip()
 
 
 # Chaves próprias são cifradas com uma chave Fernet exclusiva do servidor.
@@ -220,3 +217,8 @@ OCTOR_AI_ENCRYPTION_KEY = os.getenv("OCTOR_AI_ENCRYPTION_KEY", "")
 GEMINI_TTS_API_KEY = os.getenv("GEMINI_TTS_API_KEY", "")
 GEMINI_TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-3.8-flash-tts")
 GEMINI_TTS_VOICE = os.getenv("GEMINI_TTS_VOICE", "Kore")
+
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.1-flash-lite').strip()
+
+PENDENCIA_TTL_HORAS = int(os.getenv('PENDENCIA_TTL_HORAS', '24'))

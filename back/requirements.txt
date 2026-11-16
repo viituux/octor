@@ -22,3 +22,5 @@ google-auth>=2.38,<3
 # Chamadas HTTP aos provedores de IA e integração com o transporte de autenticação Google.
 requests>=2.32,<3
 cryptography>=44,<50
+google-genai>=1,<2
+pydantic>=2,<3

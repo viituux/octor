@@ -133,7 +133,6 @@ export class ManualsComponent implements OnInit,OnDestroy {
     }
   }
   async approve(){if(!this.run||!this.document||this.busy)return;if(!this.reviewed||!this.reviewImagesAvailable||!this.reviewFieldsValid){this.error='Confirme a revisão dos textos e imagens.';return;}this.busy=true;this.error='';try{const run=await firstValueFrom(this.service.action(this.run.id,'approve',{document:this.document,reviewed:true}));this.accept(run);await this.router.navigate(['/guides',run.guide_id]);}catch(e){this.error=manualError(e);}finally{this.busy=false;}}
-  controls(step:ManualStep){const capture=this.run?.captures.find(item=>item.id===step.capture_id);return (capture?.evidence.controls||[]).map((control:any,index:number)=>({...control,index})).filter((control:any)=>!!control.rect);}
   highlight(step:ManualStep){
     if(step.control_index==null)return null;
     const capture=this.run?.captures.find(item=>item.id===step.capture_id),rect=capture?.evidence.controls?.[step.control_index]?.rect;

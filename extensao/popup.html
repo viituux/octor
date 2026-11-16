@@ -50,6 +50,7 @@
           <input type="text" id="guideTitle" placeholder="Ex.: Criar uma fatura" value="Novo Guia">
         </div>
         <label class="microphone-option"><input type="checkbox" id="withMicrophone"> Gravar com microfone</label>
+        <label><input type="checkbox" id="manualCaptureDebug"> Salvar depuração da captura localmente</label>
       </details>
     </div>
 
@@ -86,7 +87,7 @@
     </section>
   </div>
 
-  <section id="manualStatusPanel" class="stats-card hidden"><h2>Manual automático</h2><p id="manualCaptureMessage" role="status"></p><button id="btnManualContinue" class="btn btn-primary hidden">Continuar coleta</button><button id="btnManualStop" class="btn btn-secondary hidden">Interromper coleta</button></section>
+  <section id="manualStatusPanel" class="stats-card hidden"><h2>Manual automático</h2><p id="manualCaptureMessage" role="status"></p><div id="manualAgentReview"></div><button id="btnManualContinue" class="btn btn-primary hidden">Continuar coleta</button><button id="btnManualStop" class="btn btn-secondary hidden">Interromper coleta</button></section>
   <script src="environment.js"></script>
   <script src="dialogs.js"></script>
   <script src="popup.js"></script>
