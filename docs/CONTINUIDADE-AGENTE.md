@@ -48,3 +48,11 @@ São duas horas no estande, com falas curtas para os jurados. Equipe: usuário, 
 Slides: https://docs.google.com/presentation/d/12qKwN80JLf-bks6CqnbiXQk52pTRBy2DL509wR6RFq8/edit
 Materiais locais: C:\Users\victo\Documents\Codex\OCTOR-Amostratech (roteiro e diagrama Excalidraw/PNG/SVG/PDF); não fazem parte deste repositório.
 Próximo passo sugerido: validar guia de demonstração de 3 a 5 passos e gravar vídeo de reserva. Apresentar Manual por URL como em validação. Não prometer conformidade legal, risco zero ou ganhos quantitativos não medidos.
+## Diagnóstico da geração e atualização da credencial em 16/11/2026
+
+- A demora relatada na geração de instruções foi investigada no servidor. A AWS estava com carga baixa e memória disponível; o provedor Gemini retornou HTTP 429 RESOURCE_EXHAUSTED.
+- A cota reportada para a credencial anterior era de 20 requisições diárias por projeto/modelo no nível gratuito. Modelo de instruções ativo: gemini-3-flash-preview. Esse limite descreve a resposta observada naquele momento, não uma garantia de limite atual de todas as contas.
+- O guia investigado tinha 12 passos. O frontend gera um passo por chamada, sequencialmente. O backend converte erros do provedor em HTTP 503 e o frontend continua o lote após falhas. Isso ainda precisa ser melhorado para interromper ao atingir a cota e informar o motivo claramente. Nenhuma correção desse comportamento foi implementada nesta atualização.
+- A pedido do usuário, uma nova credencial foi validada com uma solicitação mínima ao Gemini (HTTP 200) e aplicada somente em LLM_API_KEY e GEMINI_API_KEY no ambiente privado da AWS. Não houve troca de modelo, alteração da credencial de voz ou migração de banco.
+- Serviços octor e octor-manual-worker reiniciados e confirmados ativos; página pública respondeu HTTP 200. O teste não gerou nem substituiu instruções de guias e não comprova disponibilidade de cota para um lote inteiro.
+- A credencial e o arquivo .env não pertencem ao Git. Um clone novo exige configuração privada própria. Chaves pessoais ou de equipe podem ter precedência sobre a chave padrão; verificar o resolvedor em back/ai/credentials.py ao diagnosticar um usuário específico.
