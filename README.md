@@ -4,6 +4,8 @@ Plataforma web de documentação e orientação de processos: captura de ações
 
 ## Documentação
 
+- **[Continuidade para outro agente](docs/CONTINUIDADE-AGENTE.md)**: decisões recentes, publicação, validações e pendências.
+
 Para reconstruir o projeto na mão, comece pelo [roteiro de reconstrução](docs/RECONSTRUCAO.md).
 
 - **[Documentação técnica completa](docs/DOCUMENTACAO-TECNICA.md)**: arquitetura, instalação, ambiente, modelos, API, segurança e operação.
