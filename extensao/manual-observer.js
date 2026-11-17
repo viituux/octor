@@ -44,7 +44,7 @@ export function inspectManualPage(expectedUrl, position = null, cleanup = false,
     return {positions,original_scroll:scrollY,title:document.title.slice(0,200)};
   }
   if(!document.getElementById(styleId)){
-    const style=document.createElement('style');style.id=styleId;style.textContent='html{scroll-behavior:auto!important}*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important}';document.documentElement.append(style);
+    const style=document.createElement('style');style.id=styleId;style.textContent='html{scroll-behavior:auto!important}*{caret-color:transparent!important}';document.documentElement.append(style);
   }
   scrollTo({top:position,behavior:'instant'});return {ready:true};
 }
@@ -135,6 +135,8 @@ export function manualNavigation(expectedUrl, index = null, expectedLabel = '', 
   const matches = candidates.filter(candidate => candidate.label === expectedLabel);
   if (matches.length !== 1) return null;
   const [target] = matches;
+  const style = getComputedStyle(target.element);
+  if (style.visibility !== 'visible' || Number(style.opacity) === 0 || style.pointerEvents === 'none') return null;
   if (preview) {
     const bounds = target.element.getBoundingClientRect();
     document.getElementById('__octor_manual_outline__')?.remove();
@@ -155,14 +157,40 @@ export function manualNavigation(expectedUrl, index = null, expectedLabel = '', 
   if (target.kind === 'search') {
     if (typeof value !== 'string' || !value.trim() || value.length > 150) return null;
     target.element.focus();
+    globalThis.__octorManualAction = {element:target.element, value, document_id:performance.timeOrigin};
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(target.element, value);
     target.element.dispatchEvent(new Event('input', {bubbles: true}));
     return target.element.isConnected && target.element.value === value
-      ? {opened: true, typed: true}
+      ? {opened: true, typed: true, label: target.label}
       : null;
   }
   if (value !== null) return null;
   if (target.url) return {url: target.url};
+  const overlaySelector='[role=menu],[role=dialog],details[open],[popover]:popover-open,ytd-multi-page-menu-renderer';
+  const overlayState=()=>[...document.querySelectorAll(overlaySelector)].filter(el=>{
+    const rect=el.getBoundingClientRect(),style=getComputedStyle(el);
+    return rect.width>0&&rect.height>0&&style.visibility==='visible'&&style.display!=='none'&&!el.closest('[hidden],[aria-hidden=true]');
+  }).map(el=>[el,(el.innerText||'').trim()]);
+  globalThis.__octorManualClick={element:target.element,expanded:target.element.getAttribute('aria-expanded'),
+    details:target.element.closest('details'),
+    overlays:overlayState(),overlayState,document_id:performance.timeOrigin};
   target.element.click();
   return {opened: true};
+}
+
+/** A controlled component may revert its value after the input handler returns. */
+export function verifyManualTyping() {
+  const receipt = globalThis.__octorManualAction;
+  return !!receipt && receipt.document_id === performance.timeOrigin &&
+    receipt.element.isConnected && receipt.element.value === receipt.value;
+}
+
+/** Menu state is evidence; an unrelated clock or advertisement is not click success. */
+export function verifyManualClick() {
+  const receipt=globalThis.__octorManualClick;
+  if(!receipt||receipt.document_id!==performance.timeOrigin)return false;
+  if(receipt.element.getAttribute('aria-expanded')==='true'&&receipt.expanded!=='true')return true;
+  if(receipt.details?.open)return true;
+  const previous=new Map(receipt.overlays);
+  return receipt.overlayState().some(([element,text])=>!previous.has(element)||previous.get(element)!==text);
 }
