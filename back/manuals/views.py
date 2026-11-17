@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.throttling import UserRateThrottle
 from guides.models import Guide,Step
-from .models import ManualRun,ManualCapture
+from .models import ManualRun,ManualCapture,ManualObservation
 from .serializers import RunInput,CaptureInput,DocumentInput,safe_url,equivalent_page
 from .services import decode_capture,capture_fingerprints,plan_manual_navigation
 
@@ -58,6 +58,8 @@ class Detail(Base):
             if run.status in {'waiting', 'capturing', 'queued', 'generating'}:
                 return Response({'detail': 'Interrompa a coleta ou geração antes de excluir o manual.'}, status=409)
             screenshots = [capture.screenshot for capture in run.captures.all() if capture.screenshot]
+            screenshots.extend(item.screenshot for item in run.observations.all() if item.screenshot)
+            screenshots.extend(item.result_screenshot for item in run.observations.all() if item.result_screenshot)
             run.delete()
             for screenshot in screenshots:
                 transaction.on_commit(lambda file=screenshot: file.storage.delete(file.name), robust=True)
@@ -68,22 +70,44 @@ class Capture(Base):
     def post(self,request,pk):
         form=CaptureInput(data=request.data);form.is_valid(raise_exception=True);values=dict(form.validated_data)
         image=decode_capture(values.pop('screenshot_base64'))
+        step_id=values.pop('step_id',None)
+        execution_id=values.pop('execution_id',None)
+        if bool(step_id)!=bool(execution_id):raise serializers.ValidationError('Informe os dois identificadores da etapa.')
         with transaction.atomic():
             run=self.run(request,pk,True)
+            observation=None
+            if step_id:
+                quality=values['evidence'].get('quality',{})
+                if not quality.get('stable') or quality.get('pending_images',0):raise serializers.ValidationError('Captura sem estabilidade confirmada.')
+                observation=ManualObservation.objects.filter(step_id=step_id).first()
+                if observation and (observation.run_id!=run.pk or observation.execution_id!=execution_id or observation.status!='COMPLETED'):
+                    return Response({'detail':'A observação não corresponde à etapa atual.'},status=409)
+                values['evidence']['execution_id']=str(execution_id)
+                values['evidence']['step_id']=str(step_id)
+            image_hash,content_hash=capture_fingerprints(image,values['evidence'])
             existing=run.captures.filter(key=values['key']).first()
-            if existing:return Response({'id':existing.id,'duplicate':True})
+            if not existing and step_id:
+                existing=run.captures.filter(evidence__step_id=str(step_id)).first()
+            if existing:
+                original_evidence={key:value for key,value in existing.evidence.items() if key not in {'image_hash','content_hash'}}
+                if step_id and (existing.order!=values['order'] or existing.evidence.get('image_hash')!=image_hash or original_evidence!=values['evidence']):
+                    return Response({'detail':'Chave de captura reutilizada com outro conteúdo.'},status=409)
+                return Response({'id':existing.id,'duplicate':True})
             if run.status not in ['waiting','capturing']:raise serializers.ValidationError('Esta coleta já foi encerrada.')
             # A extensão lê somente a página solicitada; redirects não autorizam outra origem silenciosamente.
             if values['url'].split('#')[0]!=run.url.split('#')[0]:raise serializers.ValidationError('A página mudou. Inicie uma coleta com a nova URL.')
             if run.captures.count()>=6 or run.captures.filter(order=values['order']).exists():raise serializers.ValidationError('Limite ou ordem de captura inválida.')
-            image_hash,content_hash=capture_fingerprints(image,values['evidence'])
             for prior in run.captures.all():
                 old=prior.evidence
                 same_view=prior.url == values['url'] and all(old.get(key)==values['evidence'].get(key) for key in ['scroll_y','viewport_width','viewport_height'])
-                if old.get('image_hash')==image_hash or (content_hash and old.get('content_hash')==content_hash and same_view and old.get('quality',{}).get('visual_content',True) is False and values['evidence'].get('quality',{}).get('visual_content',True) is False):
+                if same_view and old.get('image_hash')==image_hash:
+                    if observation:
+                        observation.capture=prior;observation.save(update_fields=['capture'])
                     return Response({'id':prior.id,'duplicate':True})
             values['evidence'].update(image_hash=image_hash,content_hash=content_hash)
             capture=ManualCapture(run=run,**values);capture.screenshot=image;capture.save()
+            if observation:
+                observation.capture=capture;observation.save(update_fields=['capture'])
             run.status='capturing';run.message='Capturando as seções visíveis.';run.save()
         return Response({'id':capture.id,'duplicate':False},status=201)
 
@@ -97,79 +121,15 @@ class ImageView(Base):
 class Action(Base):
     throttle_classes=[ManualThrottle]
     def get_throttles(self):
-        if self.kwargs.get('action') in ['progress','attention','canonical']:return [ManualProgressThrottle()]
+        if self.kwargs.get('action') in ['progress','attention','canonical','action-intent','action-result']:return [ManualProgressThrottle()]
         return super().get_throttles()
     def post(self,request,pk,action):
         if action == 'plan':
-            run = self.run(request, pk)
-            regenerating = bool(run.agent_state.get('pending') and run.agent_state.get('regenerate_requested'))
-            resume_url = run.agent_state.get('resume_required')
-            if resume_url and (
-                not run.agent_state.get('observation_ticket')
-                or request.data.get('observation_ticket') != run.agent_state['observation_ticket']
-                or request.data.get('observed_url') != resume_url
-                or not request.data.get('screenshot')
-            ):
-                return Response({'index': None, 'reason': 'pending'})
-            if run.agent_state.get('pending') and not regenerating:
-                return Response({'index': None, 'reason': 'pending'})
-            if run.status != 'capturing':
-                raise serializers.ValidationError('Coleta indisponivel.')
-            label = serializers.CharField(max_length=120)
-            control = serializers.DictField(child=label)
-            controls = serializers.ListField(child=control, max_length=40).run_validation(request.data.get('controls'))
-            visited = serializers.ListField(child=serializers.CharField(max_length=120), max_length=5).run_validation(request.data.get('visited', []))
-            if any(set(item) != {'label', 'kind'} or item['kind'] not in {'page', 'menu', 'search'} for item in controls):
-                raise serializers.ValidationError('Controles invalidos.')
-            page_fields = serializers.DictField(
-                child=serializers.CharField(max_length=700, allow_blank=True),
-            ).run_validation(request.data.get('page', {}))
-            page = {
-                'title': page_fields.get('title', '')[:200],
-                'text': page_fields.get('text', ''),
-                'url': urlsplit(run.url).hostname or '',
-            }
-            screenshot = serializers.CharField(max_length=5_600_000, required=False).run_validation(
-                request.data.get('screenshot', ''),
-            ) if 'screenshot' in request.data else None
-            state = run.agent_state
-            objective = run.objective
-            if state.get('answer'):
-                objective += '\nEsclarecimento do usuário: ' + state['answer']
-            elif state.get('approved_plan'):
-                objective = state['approved_plan'][len(state.get('procedures', []))]['title'] if len(state.get('procedures', [])) < len(state['approved_plan']) else run.objective
-            decision = plan_manual_navigation(objective, controls, [] if resume_url else visited, page, screenshot,
-                                              classify=regenerating or not state.get('classification'))
-            with transaction.atomic():
-                current = self.run(request, pk, True)
-                if current.status != 'capturing' or current.agent_state != state or current.url != run.url:
-                    return Response({'index': None, 'reason': 'pending'})
-                reason = decision['reason']
-                if reason in ('plan', 'question'):
-                    current.agent_state = {
-                        'classification': 'amplo' if reason == 'plan' else 'ambiguo',
-                        'pending': {
-                            'kind': reason, 'url': run.url,
-                            'expires_at': (timezone.now() + timedelta(hours=settings.PENDENCIA_TTL_HORAS)).isoformat(),
-                            **({'items': decision['items']} if reason == 'plan' else {'question': decision['message']}),
-                        },
-                    }
-                    current.save(update_fields=['agent_state', 'updated_at'])
-                    return Response({'index': None, 'reason': 'pending'})
-                if regenerating:
-                    current.agent_state = {key: value for key, value in state.items() if key != 'regenerate_requested'}
-                    current.save(update_fields=['agent_state', 'updated_at'])
-                    return Response({'index': None, 'reason': 'pending'})
-                if resume_url and reason != 'error':
-                    current.agent_state = {
-                        key: value for key, value in state.items()
-                        if key not in {'observation_ticket', 'resume_required'}
-                    }
-                    current.save(update_fields=['agent_state', 'updated_at'])
-                if reason != 'error' and not state.get('classification'):
-                    current.agent_state = {**state, 'classification': 'especifico'}
-                    current.save(update_fields=['agent_state', 'updated_at'])
-            return Response(decision)
+            from .reliability import correlated_plan
+            return correlated_plan(self, request, pk)
+        if action in {'action-intent','action-result'}:
+            from .reliability import action_checkpoint
+            return action_checkpoint(self,request,pk,action)
         if action=='generate':return self.generate(request,pk)
         if action=='approve':return self.approve(request,pk)
         with transaction.atomic():
@@ -251,6 +211,8 @@ class Action(Base):
                 }]}
             elif action=='captured':
                 if run.status=='captured':return Response(data(run,True))
+                if run.observations.filter(action_status='EXECUTING').exists() or run.observations.filter(status='ANALYZING').exists():
+                    return Response({'detail':'Há uma ação ou análise sem confirmação.'},status=409)
                 if run.status not in ['waiting','capturing'] or not run.captures.exists():raise serializers.ValidationError('Não há uma coleta ativa com capturas.')
                 run.status='captured';run.message='Capturas prontas. Confira as imagens antes de gerar o manual.'
             elif action=='attention':
@@ -259,6 +221,79 @@ class Action(Base):
             else:raise serializers.ValidationError('Ação inválida.')
             run.save()
         return Response(data(run,True))
+
+    def plan(self, request, pk, payload):
+        run = self.run(request, pk)
+        regenerating = bool(run.agent_state.get('pending') and run.agent_state.get('regenerate_requested'))
+        resume_url = run.agent_state.get('resume_required')
+        if resume_url and (
+            not run.agent_state.get('observation_ticket')
+            or payload.get('observation_ticket') != run.agent_state['observation_ticket']
+            or payload.get('observed_url') != resume_url
+            or not payload.get('screenshot')
+        ):
+            return Response({'index': None, 'reason': 'pending'})
+        if run.agent_state.get('pending') and not regenerating:
+            return Response({'index': None, 'reason': 'pending'})
+        if run.status != 'capturing':
+            raise serializers.ValidationError('Coleta indisponivel.')
+        label = serializers.CharField(max_length=120)
+        control = serializers.DictField(child=label)
+        controls = serializers.ListField(child=control, max_length=40).run_validation(payload.get('controls'))
+        visited = serializers.ListField(child=serializers.CharField(max_length=120), max_length=5).run_validation(payload.get('visited', []))
+        if any(set(item) != {'label', 'kind'} or item['kind'] not in {'page', 'menu', 'search'} for item in controls):
+            raise serializers.ValidationError('Controles invalidos.')
+        page_fields = serializers.DictField(
+            child=serializers.CharField(max_length=700, allow_blank=True),
+        ).run_validation(payload.get('page', {}))
+        page = {
+            'title': page_fields.get('title', '')[:200],
+            'text': page_fields.get('text', ''),
+            'url': urlsplit(run.url).hostname or '',
+        }
+        screenshot = serializers.CharField(max_length=5_600_000, required=False).run_validation(
+            payload.get('screenshot', ''),
+        ) if 'screenshot' in payload else None
+        state = run.agent_state
+        objective = run.objective
+        if state.get('answer'):
+            objective += '\nEsclarecimento do usuário: ' + state['answer']
+        elif state.get('approved_plan'):
+            objective = state['approved_plan'][len(state.get('procedures', []))]['title'] if len(state.get('procedures', [])) < len(state['approved_plan']) else run.objective
+        decision = plan_manual_navigation(objective, controls, [] if resume_url else visited, page, screenshot,
+                                          classify=regenerating or not state.get('classification'))
+        with transaction.atomic():
+            current = self.run(request, pk, True)
+            if payload.get('_observation_id') and not current.observations.filter(pk=payload['_observation_id'],status='ANALYZING').exists():
+                return Response({'index':None,'reason':'pending'})
+            if current.status != 'capturing' or current.agent_state != state or current.url != run.url:
+                return Response({'index': None, 'reason': 'pending'})
+            reason = decision['reason']
+            if reason in ('plan', 'question'):
+                current.agent_state = {
+                    'classification': 'amplo' if reason == 'plan' else 'ambiguo',
+                    'pending': {
+                        'kind': reason, 'url': run.url,
+                        'expires_at': (timezone.now() + timedelta(hours=settings.PENDENCIA_TTL_HORAS)).isoformat(),
+                        **({'items': decision['items']} if reason == 'plan' else {'question': decision['message']}),
+                    },
+                }
+                current.save(update_fields=['agent_state', 'updated_at'])
+                return Response({'index': None, 'reason': 'pending'})
+            if regenerating:
+                current.agent_state = {key: value for key, value in state.items() if key != 'regenerate_requested'}
+                current.save(update_fields=['agent_state', 'updated_at'])
+                return Response({'index': None, 'reason': 'pending'})
+            if resume_url and reason != 'error':
+                current.agent_state = {
+                    key: value for key, value in state.items()
+                    if key not in {'observation_ticket', 'resume_required'}
+                }
+                current.save(update_fields=['agent_state', 'updated_at'])
+            if reason != 'error' and not state.get('classification'):
+                current.agent_state = {**state, 'classification': 'especifico'}
+                current.save(update_fields=['agent_state', 'updated_at'])
+        return Response(decision)
 
     def generate(self,request,pk):
         with transaction.atomic():

@@ -59,6 +59,8 @@ class EvidenceInput(serializers.Serializer):
         return data
 
 class CaptureInput(serializers.Serializer):
+    execution_id=serializers.UUIDField(required=False)
+    step_id=serializers.UUIDField(required=False)
     key=serializers.CharField(max_length=80)
     order=serializers.IntegerField(min_value=1,max_value=6)
     url=serializers.URLField(max_length=2000,validators=[safe_url])

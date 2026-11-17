@@ -67,9 +67,10 @@ def decode_capture(data):
         with Image.open(io.BytesIO(raw)) as image:
             if image.width*image.height>16000000 or image.width<100 or image.height<100:raise ValueError()
             image.load();image=image.convert('RGB');image.thumbnail((2400,2400))
+            if all(high-low < 2 for low,high in image.getextrema()):raise ValueError()
             output=io.BytesIO();image.save(output,'JPEG',quality=90)
         return ContentFile(output.getvalue(),name=uuid.uuid4().hex+'.jpg')
-    except (ValueError,UnidentifiedImageError,OSError,Image.DecompressionBombError):
+    except (ValueError,TypeError,AttributeError,UnidentifiedImageError,OSError,Image.DecompressionBombError):
         raise ValidationError({'screenshot_base64':'Captura inválida ou acima dos limites permitidos.'})
 
 

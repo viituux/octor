@@ -37,3 +37,18 @@ class ManualCapture(models.Model):
     class Meta:
         ordering=['order','id']
         constraints=[models.UniqueConstraint(fields=['run','key'],name='unique_manual_capture_key'),models.UniqueConstraint(fields=['run','order'],name='unique_manual_capture_order')]
+
+
+class ManualObservation(models.Model):
+    """Durable reservation and validated input for one URL-agent decision."""
+    run = models.ForeignKey(ManualRun, on_delete=models.CASCADE, related_name='observations')
+    execution_id = models.UUIDField()
+    step_id = models.UUIDField(unique=True)
+    request_hash = models.CharField(max_length=64)
+    status = models.CharField(max_length=20, default='ANALYZING')
+    screenshot = models.ImageField(storage=PrivateManualStorage(), upload_to='observations/%Y/%m/%d/')
+    result_screenshot = models.ImageField(storage=PrivateManualStorage(), upload_to='observations/%Y/%m/%d/', blank=True)
+    action_status = models.CharField(max_length=20, blank=True, default='')
+    decision = models.JSONField(default=dict)
+    capture = models.ForeignKey(ManualCapture, null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
