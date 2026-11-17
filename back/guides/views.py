@@ -20,7 +20,7 @@ from .permissions import OwnerWritesOthersRead, accessible_guides
 # Dependência: tempo e utilitários compatíveis com a configuração Django.
 from django.utils import timezone
 # Dependência: serialização, respostas, permissões e contratos HTTP da API REST.
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 # Dependência: usuários, validação de senha e autenticação do Django.
 from django.contrib.auth.models import User
 # Dependência: contratos e funções do módulo .serializers reutilizados neste fluxo.
@@ -30,6 +30,97 @@ from .serializers import GuideListSerializer, GuideDetailSerializer, StepSeriali
 class GuideViewSet(viewsets.ModelViewSet):
     # list: permissões verificadas antes da execução da view.
     permission_classes = [permissions.IsAuthenticated, OwnerWritesOthersRead]
+
+    @action(detail=True, methods=['post'], url_path='authorize-test')
+    @transaction.atomic
+    def authorize_test(self, request, pk=None):
+        """Registra um aceite idempotente; somente o criador pode autorizá-lo."""
+        guide = self.get_object()
+        if guide.owner_id != request.user.id:
+            raise PermissionDenied('Somente o criador pode autorizar o teste.')
+        guide = Guide.objects.select_for_update().get(pk=guide.pk)
+        from .authorization import is_test_authorized
+        enabled = request.data.get('enabled', True)
+        if not isinstance(enabled, bool):
+            raise ValidationError({'enabled': 'Informe true ou false.'})
+        if not enabled:
+            guide.valido_para_teste = False
+            guide.test_authorized_at = None
+            guide.test_authorized_by = None
+            guide.save(update_fields=['valido_para_teste', 'test_authorized_at', 'test_authorized_by', 'updated_at'])
+        elif not is_test_authorized(guide):
+            guide.valido_para_teste = True
+            guide.test_authorized_at = timezone.now()
+            guide.test_authorized_by = request.user
+            guide.playback_environment = 'test'
+            guide.save(update_fields=['valido_para_teste', 'test_authorized_at', 'test_authorized_by', 'playback_environment', 'updated_at'])
+        return Response(GuideDetailSerializer(guide, context={'request':request}).data)
+
+    @action(detail=True, methods=['get', 'post'], url_path='training-approvals',
+            permission_classes=[permissions.IsAuthenticated])
+    @transaction.atomic
+    def training_approvals(self, request, pk=None):
+        """Lista e aprova conclusões individuais no escopo dos responsáveis."""
+        from trainings.models import Participation
+        from trainings.permissions import managed
+
+        guide = self.get_object()
+        trainings = managed(request.user).filter(guide=guide)
+        if not trainings.exists() and guide.owner_id != request.user.id:
+            raise PermissionDenied('Somente os responsáveis podem aprovar treinamentos.')
+        parts = Participation.objects.filter(training__in=trainings)
+        if request.method == 'POST':
+            ids = request.data.get('participation_ids')
+            approve_all = request.data.get('all', False)
+            legacy = 'participation_id' in request.data and ids is None and approve_all is False
+            if legacy:
+                ids = [request.data['participation_id']]
+            eligible = parts.filter(completed_at__isnull=False)
+            if approve_all is not True:
+                if not isinstance(ids, list) or not ids or any(type(pk) is not int or pk < 1 for pk in ids):
+                    raise ValidationError('Selecione pelo menos uma conclusão válida.')
+                eligible = eligible.filter(pk__in=set(ids))
+            selected = list(eligible.select_for_update().order_by('pk'))
+            if approve_all is not True and len(selected) != len(set(ids)):
+                from rest_framework.exceptions import NotFound
+                raise NotFound('Uma das conclusões não está disponível para aprovação.')
+            pending = [part for part in selected if part.approved_at is None]
+            now = timezone.now()
+            for part in pending:
+                part.approved_at, part.approved_by = now, request.user
+            Participation.objects.bulk_update(pending, ['approved_at', 'approved_by'])
+            if legacy:
+                return Response({'approved_at': selected[0].approved_at})
+            return Response({'approved_count': len({part.user_id for part in pending})})
+        return Response([
+            {'id': part.pk, 'training': part.training.title,
+             'participant': part.user.get_full_name() or part.user.email or part.user.username,
+             'status': 'Concluído' if part.completed_at else 'Em andamento' if part.started_at else 'Não iniciou',
+             'eligible': bool(part.completed_at and not part.approved_at),
+             'approved': bool(part.approved_at)}
+            for part in parts.select_related('training', 'user').order_by('training_id', 'user_id')
+        ])
+
+    @action(detail=True, methods=['get'], url_path='preview-training')
+    def preview_training(self, request, pk=None):
+        """Permite somente ao criador simular o guia sem liberar participantes."""
+        guide = self.get_object()
+        if guide.owner_id != request.user.id:
+            raise PermissionDenied('Somente o criador pode visualizar esta simulação.')
+        return Response({'training_id': None, 'preview': True})
+
+    @action(detail=True, methods=['get'], url_path='playback-access')
+    def playback_access(self, request, pk=None):
+        """Revalida o início: participantes seguem para o treinamento atribuído."""
+        from .authorization import require_test_authorization, assigned_training
+        guide = self.get_object()
+        require_test_authorization(guide)
+        if guide.owner_id == request.user.id:
+            return Response({'training_id':None})
+        participation = assigned_training(guide, request.user)
+        if participation is None:
+            raise PermissionDenied('Este treinamento não foi atribuído a você.')
+        return Response({'training_id':participation.training_id})
 
     # Define o conjunto de registros que esta view permite consultar, antes dos filtros e da serialização.
     # Retorno: resultado de query.filter(...).

@@ -17,6 +17,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from guides.models import Guide, Workspace
 from .models import Training, Participation, Feedback
 from .permissions import managed, require_manager
+from guides.authorization import is_test_authorized, require_test_authorization
 from .serializers import TrainingInput, AssignmentInput, FeedbackInput
 from .services import publish, participation_data
 from .analytics import analytics, Filters, filtered
@@ -30,6 +31,7 @@ def admin_capability(user):
 def training_data(t, admin=False):
     """Oculta o rascunho/gabarito das consultas de participantes."""
     data={'id': t.id, 'guide': t.guide_id, 'title': t.title, 'description': t.description, 'status': t.status, 'workspace': t.workspace_id, 'version': t.current_version.number if t.current_version_id else None}
+    data['test_authorized'] = is_test_authorized(t.guide)
     if admin:
         data.update(draft_questions=t.draft_questions, version_info=version_info(t.current_version),
                     document_profile=t.document_profile)
@@ -237,7 +239,7 @@ class MyTrainingsView(BaseView):
             training = part.training
             if training.status == 'draft':
                 # Identifica a atribuição sem entregar a descrição, os passos ou o gabarito do rascunho.
-                items.append({'id': training.id, 'title': training.title, 'status': 'draft'})
+                items.append({'id': training.id, 'title': training.title, 'status': training.status, 'test_authorized': is_test_authorized(training.guide), 'awaiting_test_authorization': not is_test_authorized(training.guide)})
                 continue
             version = part.version or training.current_version
             steps = version.content.get('steps', []) if version else []
@@ -248,19 +250,30 @@ class MyTrainingsView(BaseView):
             })
         return Response(items)
 
-def my_part(user, pk, lock=False):
+def my_part(user, pk, lock=False, *, require_release=True):
     """Busca a participação autorizada; lock ativa bloqueio transacional. Ausência gera 404."""
     query = Participation.objects.select_related('training__current_version', 'version').filter(Q(training__workspace__isnull=True) | Q(training__workspace__in=user.workspaces.all()) | Q(training__owner=user) | Q(training__workspace__owner=user), user=user, training_id=pk)
     if lock:
         query = query.select_for_update(of=('self',))
-    return get_object_or_404(query)
+    part = get_object_or_404(query)
+    if require_release:
+        require_test_authorization(part.training.guide)
+    return part
+
+class TrainingAccessView(BaseView):
+    def get(self, request, pk):
+        """Revalida atribuição e liberação, sem carregar imagens ou alterar progresso."""
+        part = my_part(request.user, pk, require_release=False)
+        if part.training.status == 'draft' or part.training.guide.trashed_at:
+            raise PermissionDenied('O treinamento não está disponível.')
+        return Response({'test_authorized': is_test_authorized(part.training.guide)})
 
 class MyTrainingView(BaseView):
 
     def get(self, request, pk):
         """Atende GET em MyTrainingView; recebe request e parâmetros da URL, retorna Response ou falha de permissão/validação."""
-        p = my_part(request.user, pk)
-        if p.training.status == 'draft':
+        p = my_part(request.user, pk, require_release=False)
+        if p.training.status == 'draft' or p.training.guide.trashed_at:
             raise PermissionDenied('O treinamento ainda não foi publicado.')
         version = p.version or p.training.current_version
         header=participant_header(p)
@@ -270,6 +283,14 @@ class MyTrainingView(BaseView):
             for key in ('title', 'description', 'steps')
             if key in snapshot
         } if version else None
+        if not header['test_authorized']:
+            # No modo de leitura, envie somente instruções e capturas da versão atribuída.
+            if content:
+                content['steps'] = [
+                    {key: step[key] for key in ('text', 'screenshot_url', 'click_x', 'click_y') if key in step}
+                    for step in content.get('steps', [])
+                ]
+            return Response({**header, 'content': content, 'progress': {}})
         return Response({**header, 'content': content, 'progress': participation_data(p),
                          'ranking':ranking(p.training,version),'ranking_version':version.number if version else None})
 
@@ -281,6 +302,10 @@ class LearningActionView(BaseView):
         p = my_part(request.user, pk, True)
         if p.training.status != 'published':
             raise ValidationError('Este treinamento não está disponível para novas atividades.')
+        if action == 'playback':
+            if not p.started_at:
+                raise PermissionDenied('Inicie o treinamento antes de abrir o Me Guie.')
+            return Response({'authorized':True})
         if action == 'start':
             if not p.started_at:
                 if not has_current_consent(request.user):

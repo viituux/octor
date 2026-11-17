@@ -200,6 +200,7 @@ def plan_manual_navigation(objective, controls, visited, page=None, screenshot=N
 
     class Click(BaseModel):
         alvo_id: StrictInt
+        rotulo: str
         texto_do_passo: str
 
     class TypeSearch(Click):
@@ -231,7 +232,9 @@ def plan_manual_navigation(objective, controls, visited, page=None, screenshot=N
         return failure
     image = decode_capture(screenshot).read()
     context = json.dumps({
-        'objective': objective, 'controls': controls, 'visited': visited, 'page': page or {},
+        'objective': objective,
+        'controls': [dict(control, alvo_id=index) for index, control in enumerate(controls)],
+        'visited': visited, 'page': page or {},
     }, ensure_ascii=False)
     instruction = (
         'Antes de escolher um clique, interprete o objetivo do usuário. Identifique a tarefa, '
@@ -244,16 +247,32 @@ def plan_manual_navigation(objective, controls, visited, page=None, screenshot=N
         'Pare em login, pagamento, confirmacao ou se faltar evidencia. '
         'Para troca de conta, abra o menu e a lista de contas, sem escolher outra conta. '
         'Para preencher busca, copie somente o valor literal fornecido no objetivo. Para senha, codigo ou dado pessoal, finalize como precisa_usuario. '
-        'Chame exatamente uma ferramenta. O alvo_id corresponde ao indice a partir de zero. '
+        'Chame exatamente uma ferramenta. Copie o alvo_id e o rotulo exato do MESMO controle. O rotulo deve ser igual ao label da lista, sem traduzir. '
         'Finalize como concluido somente se a tela final estiver visivel. Nao repita controles visitados.'
     )
     if classify:
         instruction += (
             ' Classifique primeiro: pedido amplo exige planejar com até cinco procedimentos observáveis; '
-            'pedido ambíguo exige perguntar_ao_usuario; pedido específico pode usar as ferramentas de ação.'
+            'pedido ambíguo exige perguntar_ao_usuario; pedido específico usa as ferramentas de ação. '
+            'Um procedimento único continua específico mesmo que exija vários cliques. '
+            'Exemplo específico: gere um manual de como criar um repositório no GitHub. '
+            'Não transforme os cliques desse procedimento em vários procedimentos de um plano. '
+            'Planeje apenas quando forem pedidos vários procedimentos ou o manual geral do sistema.'
         )
     normalize = lambda label: ' '.join(label.split()).casefold()
     visited_labels = {normalize(label) for label in visited}
+    import re
+    import unicodedata
+    def phrase(value):
+        ascii_text = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode()
+        return ' '.join(re.findall(r'[a-z0-9]+', ascii_text.lower()))
+    objective_phrase = ' ' + phrase(objective) + ' '
+    named_targets = [
+        index for index, control in enumerate(controls)
+        if len(phrase(control['label'])) >= 6
+        and ' ' + phrase(control['label']) + ' ' in objective_phrase
+        and normalize(control['label']) not in visited_labels
+    ]
     with genai.Client(api_key=settings.GEMINI_API_KEY, http_options=types.HttpOptions(timeout=12000)) as client:
         for attempt in range(3):
             try:
@@ -272,6 +291,9 @@ def plan_manual_navigation(objective, controls, visited, page=None, screenshot=N
                     if classify and call.name == 'planejar':
                         plan = Plan.model_validate(call.args)
                         titles = [title.strip() for title in plan.procedimentos]
+                        if titles and all(re.match(r'^(clicar|clique|selecionar|selecione|abrir|abra|digitar|digite)\b', title, re.I) for title in titles):
+                            context += '\nA proposta contém ações de um único procedimento. Escolha a próxima ação observada, sem planejar esses cliques como procedimentos separados.'
+                            continue
                         if 1 <= len(titles) <= 5 and all(0 < len(title) <= 200 for title in titles):
                             return {'index': None, 'reason': 'plan', 'items': titles}
                     if classify and call.name == 'perguntar_ao_usuario':
@@ -286,10 +308,16 @@ def plan_manual_navigation(objective, controls, visited, page=None, screenshot=N
                         typing = call.name == 'digitar'
                         click = (TypeSearch if typing else Click).model_validate(call.args)
                         index = click.alvo_id
-                        if (0 <= index < len(controls) and click.texto_do_passo.strip()
+                        if len(named_targets) == 1 and index != named_targets[0]:
+                            target = named_targets[0]
+                            context += '\nA decisão anterior contradiz o rótulo explicitamente solicitado. A tela contém o controle: ' + json.dumps(dict(controls[target], alvo_id=target), ensure_ascii=False)
+                            continue
+                        if (0 <= index < len(controls) and click.rotulo == controls[index]['label'] and click.texto_do_passo.strip()
                                 and normalize(controls[index]['label']) not in visited_labels):
                             if typing != (controls[index].get('kind') == 'search'):
                                 continue
+                            logger.warning('manual_navigation_action index=%s label=%s instruction=%s',
+                                           index, controls[index]['label'], click.texto_do_passo[:200])
                             decision = {'index': index, 'reason': 'next', 'step_text': click.texto_do_passo[:650]}
                             if typing:
                                 value = click.valor

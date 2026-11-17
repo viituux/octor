@@ -40,6 +40,9 @@ export interface UserSearchResult { id:number; username:string; name:string; }
 export interface TeamMember { id:number; username?:string; name:string; email:string; role:'owner'|'member'; }
 export interface TeamInvite { id:number; email:string; expires_at:string; expired?:boolean; token?:string; }
 export interface Guide {
+  test_authorized?: boolean;
+  can_start_playback?: boolean;
+  test_authorized_at?: string | null;
   playback_environment?: "unclassified" | "test" | "production";
   workspace?:number|null; workspace_name?:string|null; can_edit?:boolean; is_favorite?:boolean; shared_directly?:boolean; trashed_at?:string|null;
   capture_audio_url?: string | null;
@@ -91,6 +94,17 @@ export class GuideService {
    * @returns Observable<Guide[]>.
    * Falhas HTTP seguem pelo canal de erro do Observable; este método não confirma sucesso antes da resposta.
    */
+  /** Autoriza no backend; nunca libera o teste apenas no estado local. */
+  authorizeTest(id:number,enabled=true) { return this.http.post<Guide>(this.apiBase+'/guides/'+id+'/authorize-test/',{enabled}); }
+  pendingApprovals(id: number) {
+    return this.http.get<{id: number; training: string; participant: string; status: string; eligible: boolean; approved: boolean}[]>(
+      this.apiBase+'/guides/'+id+'/training-approvals/');
+  }
+  approveParticipation(id: number, participationIds: number[], all: boolean) {
+    return this.http.post<{approved_count: number}>(this.apiBase+'/guides/'+id+'/training-approvals/', {participation_ids: participationIds, all});
+  }
+  previewTraining(id:number) { return this.http.get<{training_id:null}>(this.apiBase+'/guides/'+id+'/preview-training/'); }
+  playbackAccess(id:number) { return this.http.get<{training_id:number|null}>(this.apiBase+'/guides/'+id+'/playback-access/'); }
   getGuides(includeTrash = false): Observable<Guide[]> {
     return this.http.get<Guide[]>(`${this.apiBase}/guides/${includeTrash ? '?include_trash=1' : ''}`);
   }

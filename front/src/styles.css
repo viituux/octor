@@ -20,3 +20,29 @@
 :root{color-scheme:light}@media print{:root{color-scheme:light}body{color:#252334}}
 
 @media print{:root{--text-main:#253448;--text-muted:#566576;--text-soft:#6b7c8d;--border-color:#d9e2eb;--warning:#77581f;--primary:#25658d;--bg-main:#fff;--bg-card:#fff;--bg-card-hover:#f1f5f9}}
+
+/* Centraliza diálogos modais na janela e mantém o conteúdo acessível em telas baixas. */
+dialog:modal:not([aria-labelledby="octor-tour-title"]) {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  max-inline-size: calc(100vw - 32px);
+  max-block-size: min(85dvh, calc(100dvh - 32px));
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.modal-backdrop:has(> #library-dialog) {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+#library-dialog {
+  max-inline-size: 100%;
+  max-block-size: calc(100dvh - 32px);
+  overflow: auto;
+}

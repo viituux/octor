@@ -32,3 +32,14 @@ O backend, o frontend e o ZIP desta série de mudanças foram publicados na AWS 
 - Teste real com o pedido de criar repositório no GitHub abriu a página inicial e parou como incompleto. Foi adicionada nova observação em caso de mudança dos controles. A repetição final do teste real foi interrompida pelo usuário e permanece pendente; não considerar esse fluxo aprovado.
 - Testes locais: 73 testes da extensão passaram. Dois testes Chromium passaram anteriormente (navegação controlada com contorno e retomada com recusa de outro domínio). Os testes continuam ignorados pelo Git conforme a organização existente; não estarão disponíveis em um clone novo.
 - Próxima validação: Chrome autenticado, extensão atualizada, objetivo informado pelo usuário, verificar menu +, New repository e formulário. Não enviar o formulário nem criar repositório real durante a validação. Confirmar prints e contornos de cada alvo e vínculo no rascunho.
+## Atualização de continuidade — 17/11/2026, extensão 1.2.5
+
+Esta seção substitui as pendências antigas do teste GitHub descritas acima. O teste real no Chrome com a extensão 1.2.4 abriu Criar novo, Novo repositório e chegou ao formulário, com três imagens distintas persistidas; o formulário não foi preenchido nem enviado. A classificação foi específico e o procedimento terminou concluído. Isso valida esse caminho observado, sem garantir outros sistemas.
+
+A versão 1.2.5 corrige a faixa clara sobre o menu: a máscara antiga cobria inclusive campos vazios. Agora a proteção oculta os valores preenchidos no próprio campo e preserva o empilhamento da página. Blocos data-private permanecem ocultos. Propriedades CSS originais são restauradas ao limpar/reaplicar a máscara. Ver docs/MANUAL-CAPTURA-ESTABILIDADE.md para causas, limites e validação.
+
+Arquivos principais: extensao/manual-ready.js (esperas), manual-background.js (orquestração), manual-observer.js (alvos, contorno e privacidade), back/manuals/services.py (Gemini e validação de alvo/rótulo). O pacote front/public/assets/octor-extensao.zip está na versão 1.2.5 e foi publicado na AWS; atualizar o pacote não recarrega automaticamente a extensão do Chrome. O backend não foi alterado no deploy específico da máscara.
+
+Também entram neste envio as alterações locais anteriores de autorização de teste e aprovação de treinamentos, incluindo migrações guides 0008/0009 e trainings 0006. Consultar docs/AUTORIZACAO-TESTE.md e o código para o estado atual. Não executar migrações ou deploy automaticamente só por clonar o repositório.
+
+Os testes da extensão e várias suítes de backend continuam fora do versionamento pelas regras existentes do .gitignore. Não presumir que um clone novo contém essas suítes. Credenciais de AWS, variáveis .env, bancos locais, prints autenticados e evidências de depuração não fazem parte deste envio.

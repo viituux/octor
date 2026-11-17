@@ -3,7 +3,7 @@
 from django.urls import path
 # Dependência: contratos e funções do módulo .views reutilizados neste fluxo.
 from .views import CapabilitiesView,AdminTrainingsView,AdminTrainingView,AdminActionView,ParticipantInspectionView,DashboardView,MyTrainingsView,MyTrainingView,LearningActionView
-from .views import QuizSuggestionsView
+from .views import QuizSuggestionsView, TrainingAccessView
 from .archive_views import TrainingVersionDetailView,TrainingAssetView,TrainingLegacyMediaView
 # list: contratos de caminhos HTTP; mudar sua ordem pode alterar a resolução de rotas.
 urlpatterns=[
@@ -18,6 +18,7 @@ urlpatterns=[
  path('admin/<int:pk>/participants/<int:user_id>/',ParticipantInspectionView.as_view()),
  path('admin/<int:pk>/<str:action>/',AdminActionView.as_view()),
  path('',MyTrainingsView.as_view()),
+ path('<int:pk>/access/',TrainingAccessView.as_view()),
  path('<int:pk>/',MyTrainingView.as_view()),
  path('<int:pk>/<str:action>/',LearningActionView.as_view()),
 ]

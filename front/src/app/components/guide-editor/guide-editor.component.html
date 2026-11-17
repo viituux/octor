@@ -1,15 +1,57 @@
 <!-- Editor do guia: instruções e capturas compartilham o mesmo passo. Controles de edição dependem da permissão; seções de impressão preservam a exportação. -->
 <div class="editor-shell">
-  <header class="topbar"><div class="editor-navigation"><a routerLink="/guides" class="brand"><app-octor-logo></app-octor-logo></a><span class="crumb">Meus guias / {{guideTitle}}</span></div><div class="actions" role="group" aria-label="Ações do guia"><details *ngIf="canEdit" name="editor-menu"><summary aria-label="Gerar"><img class="ai-tentacle" src="assets/img/brand/ai-tentacle.png" alt=""> <span>Gerar</span> <i aria-hidden="true">▾</i></summary><div class="editor-menu"><button *ngIf="canEdit" (click)="generateAllInstructions()" [disabled]="generatingAllNarration || generatingAll || generatingStepId!==null || savingStepIds.size>0 || !guide?.steps?.length"><app-octor-loading *ngIf="generatingAll"></app-octor-loading>{{generatingAll?'Gerando instruções…':'Instruções de todos os passos'}}</button><button *ngIf="canEdit" type="button" (click)="generateAllNarration()" [disabled]="!canGenerateAllNarration"><app-octor-loading *ngIf="generatingAllNarration"></app-octor-loading>{{generatingAllNarration ? 'Gerando narrações…' : 'Narração de todos os passos'}}</button></div></details><details name="editor-menu"><summary aria-label="Mais ações">⋯</summary><div class="editor-menu"><button (click)="exportHtml()" [disabled]="!guide || printing">{{printing ? 'Preparando PDF…' : 'Imprimir / PDF'}}</button><a *ngIf="canEdit && guide" [routerLink]="['/training-admin/new']" [queryParams]="{guide:guide.id}" style="align-self:center;font-size:12px">Criar treinamento</a></div></details><div class="playback-actions"><details *ngIf="canEdit && guide && !isReferenceManual" class="environment-control" name="editor-menu">
-      <summary>{{guide.playback_environment === "test" ? "Ambiente de teste" : guide.playback_environment === "production" ? "Produção" : "Definir ambiente"}} <i aria-hidden="true">▾</i></summary><div class="editor-menu environment-menu">
-      <button [disabled]="savingPlaybackEnvironment || playbackStarting" type="button" [attr.aria-pressed]="guide.playback_environment === 'test'" (click)="classifyPlayback('test')">Ambiente de teste</button>
-      <button [disabled]="savingPlaybackEnvironment || playbackStarting" type="button" [attr.aria-pressed]="guide.playback_environment === 'production'" (click)="classifyPlayback('production')">Ambiente de produção</button>
-      <p>Produção e guias sem classificação ficam disponíveis para revisão pelas capturas.</p>
-    </div></details><button class="primary" (click)="startPlayback()" [disabled]="!guide?.steps?.length || playbackStarting || isReferenceManual">{{playbackStarting?'Abrindo…':'▶ Me guie'}}</button></div></div><details class="editor-account" name="editor-menu"><summary aria-label="Menu da conta" class="editor-avatar">{{avatarInitials}}</summary><div class="editor-menu"><a routerLink="/account">Minha conta</a><a routerLink="/guides">Meus guias</a></div></details></header>
-  <div class="workspace"><aside class="outline"><a routerLink="/guides">← Meus guias</a><p class="eyebrow">{{guide?.steps?.length || 0}} {{guide?.steps?.length === 1 ? 'passo' : 'passos'}}</p><nav aria-label="Passos do tutorial"><button *ngFor="let step of guide?.steps;let i=index" (click)="selectStep(step)" [class.active]="(activeOutlineId || selectedStep?.id)===step.id"><span>{{i+1}}</span><span class="outline-label">{{displayStepTitle(step) || 'Passo sem descrição'}}</span></button></nav><p class="feedback" role="status">{{saveMessage}}</p><p *ngIf="generationMessage" class="feedback" role="status">{{generationMessage}}</p><p *ngIf="playbackMessage" class="feedback" role="status">{{playbackMessage}}</p></aside>
+  <header class="topbar"><div class="editor-navigation"><a routerLink="/guides" class="brand"><app-octor-logo></app-octor-logo></a><span class="crumb">Meus guias / {{guideTitle}}</span></div><div class="actions" role="group" aria-label="Ações do guia"><details *ngIf="canEdit" name="editor-menu"><summary aria-label="Gerar"><img class="ai-tentacle" src="assets/img/brand/ai-tentacle.png" alt=""> <span>Gerar</span> <i aria-hidden="true">▾</i></summary><div class="editor-menu"><button *ngIf="canEdit" (click)="generateAllInstructions()" [disabled]="generatingAllNarration || generatingAll || generatingStepId!==null || savingStepIds.size>0 || !guide?.steps?.length"><app-octor-loading *ngIf="generatingAll"></app-octor-loading>{{generatingAll?'Gerando instruções…':'Instruções de todos os passos'}}</button><button *ngIf="canEdit" type="button" (click)="generateAllNarration()" [disabled]="!canGenerateAllNarration"><app-octor-loading *ngIf="generatingAllNarration"></app-octor-loading>{{generatingAllNarration ? 'Gerando narrações…' : 'Narração de todos os passos'}}</button></div></details><ng-container>
+      <button type="button" class="toolbar-control" title="Imprimir / PDF" aria-label="Imprimir / PDF" (click)="exportHtml()" [disabled]="!guide || printing"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg><span>{{printing ? 'Preparando…' : 'Imprimir / PDF'}}</span></button>
+      <a *ngIf="canEdit && guide" class="toolbar-control" title="Criar treinamento" aria-label="Criar treinamento" [routerLink]="['/training-admin/new']" [queryParams]="{guide:guide.id}"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 11v6m-3-3h6"/></svg><span>Criar treinamento</span></a>
+    </ng-container>
+    <button *ngIf="canEdit && !isReferenceManual" type="button" class="toolbar-control primary" title="Me Guie" aria-label="Me Guie" [disabled]="!guide?.steps?.length || playbackStarting || savingPlaybackEnvironment" (click)="startPlayback(true)"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m8 5 12 7-12 7z"/></svg><span>Me Guie</span></button>
+    <ng-container>
+      <button *ngIf="canEdit && guide && !isReferenceManual" class="toolbar-control test-authorization" type="button" aria-haspopup="dialog" title="Válido para Teste" aria-label="Válido para Teste" [attr.aria-pressed]="!!guide.test_authorized" [disabled]="savingPlaybackEnvironment || playbackStarting" (click)="releaseMessage = ''; releaseDialog.showModal()"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="6"/><circle [attr.cx]="guide?.test_authorized ? 16 : 8" cy="12" r="2"/></svg><span>Válido para Teste</span></button>
+      <button *ngIf="guide && (canEdit || pendingApprovals.length)" class="toolbar-control approve-control" type="button" title="Aprovar treinamento" aria-label="Aprovar treinamento" (click)="openApprovals(approvalDialog)"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg><span>Aprovar</span></button>
+      <button *ngIf="!isGuideOwner && guide?.can_start_playback && !isReferenceManual" class="toolbar-control primary" type="button" title="Me Guie no Sistema" aria-label="Me Guie no Sistema" (click)="startPlayback()" [disabled]="!guide?.steps?.length || playbackStarting"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m8 5 12 7-12 7z"/></svg><span>Me Guie no Sistema</span></button>
+    </ng-container>
+  </div><details class="editor-account" name="editor-menu"><summary aria-label="Menu da conta" class="editor-avatar">{{avatarInitials}}</summary><div class="editor-menu"><a routerLink="/account">Minha conta</a><a routerLink="/guides">Meus guias</a></div></details></header>
+  <dialog #releaseDialog class="training-dialog release-dialog" aria-labelledby="release-dialog-title">
+    <h2 id="release-dialog-title">Válido para Teste</h2>
+    <p><strong>Estado atual:</strong> {{guide?.test_authorized ? 'Liberado' : 'Desativado'}}</p>
+    <div class="release-dialog-actions">
+      <button type="button" class="primary" [disabled]="savingPlaybackEnvironment || guide?.test_authorized" (click)="authorizeTest(true)">Ativar</button>
+      <button type="button" [disabled]="savingPlaybackEnvironment || !guide?.test_authorized" (click)="authorizeTest(false)">Desativar</button>
+    </div>
+    <p *ngIf="releaseMessage" role="status">{{releaseMessage}}</p>
+    <p>Ative para liberar o Me Guie aos participantes designados. Ao desativar, eles continuam vendo o procedimento com os prints.</p>
+    <form method="dialog"><button>Fechar</button></form>
+  </dialog>
+  <dialog #approvalDialog class="training-dialog" aria-labelledby="approval-dialog-title">
+    <h2 id="approval-dialog-title">Aprovar Treinamento</h2>
+    <div class="approval-tabs" role="group" aria-label="Modo de aprovação">
+      <button type="button" [attr.aria-pressed]="approvalTab==='individual'" (click)="approvalTab='individual'; approvalError=''">Individual</button>
+      <button type="button" [attr.aria-pressed]="approvalTab==='all'" (click)="approvalTab='all'; approvalError=''">Todos</button>
+    </div>
+    <p *ngIf="!pendingApprovals.length">Nenhum usuário designado.</p>
+    <ul class="approval-list" *ngIf="pendingApprovals.length">
+      <li *ngFor="let row of pendingApprovals">
+        <label>
+          <input *ngIf="approvalTab==='individual'" type="checkbox" [disabled]="!row.eligible || approving"
+            [checked]="row.eligible && selectedApprovals.has(row.id)" (change)="selectApproval(row.id, $any($event.target).checked)">
+          <span>{{row.participant}} · {{row.training}}</span>
+        </label>
+        <span>{{row.status}}{{row.approved ? ' · Aprovado' : ''}}</span>
+      </li>
+    </ul>
+    <p *ngIf="approvalError" role="alert">{{approvalError}}</p>
+    <p *ngIf="approvalResult" role="status">{{approvalResult}}</p>
+    <div class="approval-tabs">
+      <button *ngIf="approvalTab==='individual'" class="approve-control" type="button" [disabled]="approving" (click)="approveTraining()">Aprovar selecionados ({{selectedApprovals.size}})</button>
+      <button *ngIf="approvalTab==='all'" class="approve-control" type="button" [disabled]="approving || !canApproveAny" (click)="approveTraining()">Aprovar todos que concluíram</button>
+      <form method="dialog"><button>Fechar</button></form>
+    </div>
+  </dialog>
+  <div class="workspace"><aside class="outline"><a routerLink="/guides">← Meus guias</a><p class="eyebrow">{{guide?.steps?.length || 0}} {{guide?.steps?.length === 1 ? 'passo' : 'passos'}}</p><nav aria-label="Passos do tutorial"><button *ngFor="let step of guide?.steps;let i=index" (click)="selectStep(step)" [class.active]="(activeOutlineId || selectedStep?.id)===step.id"><span>{{i+1}}</span><span class="outline-label">{{displayStepTitle(step) || 'Passo sem descrição'}}</span></button></nav><p class="feedback" role="status">{{saveMessage}}</p><p *ngIf="generationMessage" class="feedback" role="status">{{generationMessage}}</p></aside>
   <main class="document" (scroll)="onDocumentScroll($event)"><div class="paper">
-<div class="document-heading"><input aria-label="Título do guia" [readOnly]="!canEdit" [(ngModel)]="guideTitle" (blur)="saveGuideTitle()"><p>Execute o procedimento com as imagens abaixo ou use o Me guie para acompanhar no site.</p>
+<div class="document-heading"><input aria-label="Título do guia" [readOnly]="!canEdit" [(ngModel)]="guideTitle" (blur)="saveGuideTitle()"><p *ngIf="(isGuideOwner || guide?.can_start_playback)">Acompanhe o procedimento pelas imagens ou pelo Me Guie no Sistema.</p>
       <details class="pdf-context" *ngIf="guide"><summary>Contexto do procedimento no PDF</summary><label for="guide-objective">Descreva para que serve este guia e a quem ele se destina.</label><textarea id="guide-objective" rows="3" [readOnly]="!canEdit" [(ngModel)]="guide.description" (blur)="saveGuideDescription()" placeholder="Ex.: orientar a equipe no cadastro de um novo cliente."></textarea></details></div>
+    <p *ngIf="playbackMessage" class="generation-status ui-alert" role="status">{{playbackMessage}}</p>
     <p *ngIf="printMessage" class="generation-status ui-alert" role="status">{{printMessage}}</p>
     <p *ngIf="generationMessage" class="generation-status ui-alert" role="status">{{generationMessage}}</p>
     <p *ngIf="narrationBatchMessage" class="generation-status ui-alert" role="status">{{narrationBatchMessage}}</p>

@@ -16,7 +16,9 @@ export interface QuizDraft {statement:string;explanation:string;alternatives:{te
 export type TrainingListItem = (Training & {step_count?: number; reference_only?: boolean}) | {
   id: number;
   title: string;
-  status: 'draft';
+  status: string;
+  test_authorized?: boolean;
+  awaiting_test_authorization?: boolean;
   description?: never;
   progress?: never;
   step_count?: never;
@@ -29,7 +31,7 @@ export interface InstitutionalProfile {
   duration_minutes?: number | null;
   final_check?: string;
 }
-export interface Training{id:number;document_profile?:InstitutionalProfile;guide:number;title:string;description:string;status:string;version:number|null;version_info?:any;version_history?:any[];progress?:any;content?:any;summary?:any;participants?:any[];draft_questions?:QuizDraft[];ranking?:any[];ranking_version?:number|null;versions?:number[]}
+export interface Training{test_authorized?:boolean;awaiting_test_authorization?:boolean;id:number;document_profile?:InstitutionalProfile;guide:number;title:string;description:string;status:string;version:number|null;version_info?:any;version_history?:any[];progress?:any;content?:any;summary?:any;participants?:any[];draft_questions?:QuizDraft[];ranking?:any[];ranking_version?:number|null;versions?:number[]}
 /**
  * Normaliza os erros de treinamento para apresentação textual na interface.
  * @param e — any; evento ou falha recebida, conforme o tipo declarado e o uso no corpo.
@@ -149,5 +151,6 @@ export class TrainingService{
   * @param filters — any; filtros opcionais da consulta.
   * @returns params.
   */
+ actionAccess(id:number){return this.http.get<{test_authorized:boolean}>(this.base+id+'/access/');}
  private params(filters:any){let params=new HttpParams();for(const [key,value] of Object.entries(filters))if(value!==''&&value!==null&&value!==undefined)params=params.set(key,String(value));return params;}
 }

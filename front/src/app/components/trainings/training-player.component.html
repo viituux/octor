@@ -12,12 +12,19 @@
       <p *ngIf="training.status==='archived'" class="muted">Treinamento arquivado: o conteúdo e o histórico continuam disponíveis, mas novas atividades estão bloqueadas.</p>
       <ol class="flow" aria-label="Etapas do treinamento"><li [class.active]="stage==='content'">1. Procedimento</li><li *ngIf="needsQuiz" [class.active]="stage==='quiz'||stage==='result'">2. Quiz obrigatório</li><li [class.active]="stage==='feedback'||stage==='done'">{{needsQuiz?'3':'2'}}. Avaliação</li></ol>
     </header>
+    <section *ngIf="!training.test_authorized" aria-label="Procedimento com capturas">
+      <article *ngFor="let item of steps; index as i" class="panel">
+        <h2>Passo {{i+1}}</h2><p class="instruction">{{item.text}}</p>
+        <app-step-capture [step]="item"></app-step-capture>
+      </article>
+    </section>
+    <ng-container *ngIf="training.test_authorized">
     <section *ngIf="stage==='content'" id="training-stage" tabindex="-1">
       <div class="panel" *ngIf="!training.progress.started_at"><h2>Pronto para começar?</h2><p>Leia os passos e finalize o conteúdo para continuar. As novas versões exigem quiz e avaliação para concluir.</p><app-training-consent *ngIf="training.status==='published'" [useSaved]="true" (versionChange)="consentVersion=$event"></app-training-consent><button class="primary" (click)="start()" [disabled]="busy||!consentVersion||training.status!=='published'">Iniciar treinamento</button></div>
       <ng-container *ngIf="training.progress.started_at">
         <div class="row">
           <span>Passo {{stepIndex+1}} de {{steps.length}}</span>
-          <button *ngIf="!isReferenceManual" (click)="playback()" [disabled]="busy||training.status!=='published'">▶ Me guie no sistema</button>
+          <button *ngIf="training.test_authorized && !isReferenceManual" (click)="playback()" [disabled]="busy||training.status!=='published'">▶ Me Guie no Sistema</button>
           <button *ngIf="isReferenceManual && step" type="button" (click)="focus('training-step-reference')">Ver instrução e captura deste passo</button>
           <a *ngIf="referencePageUrl as url" class="button" [href]="url" target="_blank" rel="noopener noreferrer">Abrir site de referência (nova aba)</a>
         </div>
@@ -114,5 +121,6 @@
         </ng-container>
       </section>
     </ng-template>
+    </ng-container>
   </ng-container>
 </main>

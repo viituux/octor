@@ -11,10 +11,12 @@ from .views import BaseView,my_part
 from .archive import MEDIA_FIELDS, readable_content, storage_media_name, version_info,snapshot_digest,version_label
 
 
-def require_version_access(user, version):
+def require_version_access(user, version, *, capture_only=False):
     if managed(user).filter(pk=version.training_id).exists():
         return
-    part = my_part(user, version.training_id)
+    part = my_part(user, version.training_id, require_release=not capture_only)
+    if part.training.guide.trashed_at:
+        raise PermissionDenied('Treinamento indisponível.')
     allowed = part.version_id or part.training.current_version_id
     if allowed != version.pk or part.training.status == 'draft':
         raise PermissionDenied('Arquivo fora da versão autorizada.')
@@ -39,7 +41,10 @@ class TrainingVersionDetailView(BaseView):
 class TrainingAssetView(BaseView):
     def get(self,request,pk,number,asset_id):
         asset=get_object_or_404(TrainingAsset.objects.select_related('version'),pk=asset_id,version__training_id=pk,version__number=number)
-        require_version_access(request.user, asset.version)
+        require_version_access(request.user, asset.version, capture_only=any(
+            str(step.get('screenshot_url', '')).rstrip('/').endswith(f'/assets/{asset.pk}')
+            for step in readable_content(asset.version).get('steps', [])
+        ))
         try:stream=asset.file.open('rb')
         except OSError:raise NotFound('Arquivo arquivado indisponível. Contate o responsável pelo armazenamento.')
         response=FileResponse(stream,content_type=asset.mime_type)
@@ -50,7 +55,7 @@ class TrainingAssetView(BaseView):
 class TrainingLegacyMediaView(BaseView):
     def get(self, request, pk, number, index, field):
         version = get_object_or_404(QuizVersion, training_id=pk, number=number)
-        require_version_access(request.user, version)
+        require_version_access(request.user, version, capture_only=field == 'screenshot_url')
         steps = version.content.get('steps', [])
         if field not in MEDIA_FIELDS or index >= len(steps):
             raise NotFound()

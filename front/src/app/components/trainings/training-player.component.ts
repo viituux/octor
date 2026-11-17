@@ -66,14 +66,29 @@ export class TrainingPlayerComponent implements OnInit,OnDestroy {
   get retryAvailable(){return !!this.quizResult?.finished_at && (this.quiz?.attempt_limit||this.training?.progress?.attempt_limit||1)>this.quizResult.attempt;}
   get elapsed(){return this.quizResult?.started_at?Math.max(0,Math.floor((this.clock+this.serverOffset-Date.parse(this.quizResult.started_at))/1000)):0;}
   duration(seconds:number){return Math.floor(seconds/60)+'min '+seconds%60+'s';}
-  ngOnDestroy(){this.destroyed=true;if(this.timer)clearInterval(this.timer);this.archiveUrls.forEach(url=>URL.revokeObjectURL(url));}
+  ngOnDestroy(){clearInterval(this.accessTimer);this.destroyed=true;if(this.timer)clearInterval(this.timer);this.archiveUrls.forEach(url=>URL.revokeObjectURL(url));}
   consentVersion = '';
   stars=0; comment=''; stepIndex=0;
 
   constructor(private service:TrainingService, private route:ActivatedRoute, private zone:NgZone, private auth:AuthService) {}
 
   /** Obtém o identificador da rota e carrega o progresso do participante. */
-  ngOnInit(){this.id=Number(this.route.snapshot.paramMap.get('id'));this.timer=setInterval(()=>this.clock=Date.now(),1000);this.load();}
+  private accessTimer?: ReturnType<typeof setInterval>;
+  private checkingAccess = false;
+  private async refreshAccess(){
+    if(this.checkingAccess || this.destroyed || this.loading || !this.training || document.hidden)return;
+    this.checkingAccess=true;
+    try {
+      const access = await firstValueFrom(this.service.actionAccess(this.id));
+      if (!this.destroyed && this.training && access.test_authorized !== this.training.test_authorized) {
+        this.training.test_authorized = access.test_authorized;
+        await this.load();
+      }
+    }
+    catch(e:any){if(e.status===403 || e.status===404){this.training=undefined as any;this.error='A liberação deste treinamento foi desativada. Seu progresso foi preservado.';}}
+    finally{this.checkingAccess=false;}
+  }
+  ngOnInit(){this.accessTimer=setInterval(()=>void this.refreshAccess(),10000);this.id=Number(this.route.snapshot.paramMap.get('id'));this.timer=setInterval(()=>this.clock=Date.now(),1000);this.load();}
   get steps(){return this.training?.content?.steps||[];}
   get step(){return this.steps[this.stepIndex];}
   private get progressKey(): string | null {
@@ -115,6 +130,7 @@ export class TrainingPlayerComponent implements OnInit,OnDestroy {
       this.training=await firstValueFrom(this.service.get(this.id));
       this.archivedSteps = this.training.content?.steps ?? [];
       if(this.service.hydrateContent){const archive=await this.service.hydrateContent(this.training.content);if(this.destroyed){archive.urls.forEach(url=>URL.revokeObjectURL(url));return;}this.archiveUrls.forEach(url=>URL.revokeObjectURL(url));this.archiveUrls=archive.urls;this.training.content=archive.content;if(archive.warnings.length)this.notice=archive.warnings[0];}
+      if (!this.training.test_authorized) return;
       this.evaluate(false);
       if(this.needsQuiz && this.quizResult && !this.quizFinished){const state=await firstValueFrom(this.service.action(this.id,'quiz-state'));this.applyQuiz(state);}
       const reference = this.route.snapshot.queryParamMap.get('referenceStep');
@@ -196,6 +212,7 @@ export class TrainingPlayerComponent implements OnInit,OnDestroy {
   /** Solicita orientação no site real; falhas de extensão não concluem o conteúdo. */
   async playback(){if(this.isReferenceManual){this.notice='Este manual é um conteúdo de referência das telas observadas.';return;}
     if(!this.training?.progress.started_at){await this.start();if(!this.training?.progress.started_at)return;}
+    if (!await this.run('playback')) return;
     const runtime=(window as any).chrome?.runtime,extension=localStorage.getItem('autoguide_extension_id');
     if(!runtime?.sendMessage||!extension){this.notice='Conecte a extensão em Minha conta para usar o Me guie. Você pode acompanhar o conteúdo abaixo.';return;}
     this.busy=true;this.error='';

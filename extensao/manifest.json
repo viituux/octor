@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OCTOR - Gravador de Procedimentos",
-  "version": "1.2.0",
+  "version": "1.2.5",
   "description": "Grava suas ações no navegador e gera tutoriais passo a passo com capturas de tela.",
   "permissions": [
     "activeTab",

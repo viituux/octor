@@ -28,6 +28,10 @@ class Guide(models.Model):
     description = models.TextField(blank=True, default="")
     # A classificação do criador não autoriza endereços na extensão.
     playback_environment = models.CharField(max_length=12, choices=[("unclassified", "Não classificado"), ("test", "Homologação"), ("production", "Produção")], default="unclassified")
+    # Autorização explícita do criador; a classificação antiga não concede acesso.
+    valido_para_teste = models.BooleanField(default=False, editable=False)
+    test_authorized_at = models.DateTimeField(null=True, blank=True, editable=False)
+    test_authorized_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, editable=False, related_name='test_authorized_guides')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
     trashed_at = models.DateTimeField(null=True, blank=True)
     starred_by = models.ManyToManyField(User, blank=True, related_name="starred_guides")

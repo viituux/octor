@@ -62,25 +62,77 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
     return Math.max(0, Math.min(100, ((coordinate || 0) / (size || original || 1)) * 100));
   }
 
+  pendingApprovals: {id: number; training: string; participant: string; status: string; eligible: boolean; approved: boolean}[] = [];
+  approvalTab: 'individual' | 'all' = 'individual';
+  selectedApprovals = new Set<number>();
+  approvalError = '';
+  approvalResult = '';
+  get canApproveAny(): boolean { return this.pendingApprovals.some(row => row.eligible); }
+
+  openApprovals(dialog: HTMLDialogElement): void {
+    this.approvalTab = 'individual';
+    this.selectedApprovals.clear();
+    this.approvalError = this.approvalResult = '';
+    if (this.guide) this.refreshApprovals(this.guide.id);
+    dialog.showModal();
+  }
+
+  selectApproval(id: number, checked: boolean): void {
+    if (checked) this.selectedApprovals.add(id);
+    else this.selectedApprovals.delete(id);
+    this.approvalError = '';
+  }
+  approving = false;
+
+  private refreshApprovals(id: number): void {
+    this.guideService.pendingApprovals(id).subscribe({
+      next: pending => this.pendingApprovals = pending,
+      error: () => this.pendingApprovals = [],
+    });
+  }
+
+  async approveTraining(): Promise<void> {
+    if (!this.guide || this.approving) return;
+    const all = this.approvalTab === 'all';
+    const ids = this.pendingApprovals.filter(row => row.eligible && this.selectedApprovals.has(row.id)).map(row => row.id);
+    this.approvalError = this.approvalResult = '';
+    if (!all && !ids.length) {
+      this.approvalError = 'Selecione pelo menos um usuário que concluiu.';
+      return;
+    }
+    const guideId = this.guide.id;
+    this.approving = true;
+    try {
+      const result = await firstValueFrom(this.guideService.approveParticipation(guideId, ids, all));
+      this.selectedApprovals.clear();
+      this.approvalResult = result.approved_count === 1 ? '1 usuário aprovado' : `${result.approved_count} usuários aprovados`;
+      this.refreshApprovals(guideId);
+    } catch (error: any) {
+      this.approvalError = error.error?.detail || 'Não foi possível aprovar o treinamento.';
+    } finally {
+      this.approving = false;
+    }
+  }
+
   playbackStarting = false;
   savingPlaybackEnvironment = false;
 
-  classifyPlayback(environment: 'test' | 'production'): void {
-    if (!this.guide || !this.canEdit || this.savingPlaybackEnvironment || this.playbackStarting) return;
-    const guide = this.guide;
+  /** Registra o aceite do criador e usa exclusivamente o resultado confirmado pela API. */
+  releaseMessage = '';
+
+  authorizeTest(enabled: boolean): void {
+    if (!this.guide || !this.canEdit || this.savingPlaybackEnvironment) return;
     this.savingPlaybackEnvironment = true;
-    this.playbackMessage = '';
-    this.guideService.updateGuide(guide.id, {playback_environment: environment}).subscribe({
+    this.releaseMessage = '';
+    this.guideService.authorizeTest(this.guide.id,enabled).subscribe({
       next: saved => {
-        guide.playback_environment = saved.playback_environment;
+        Object.assign(this.guide!, saved);
         this.savingPlaybackEnvironment = false;
-        this.playbackMessage = environment === 'test'
-          ? 'Ambiente marcado como homologação. A extensão ainda verifica os endereços do roteiro.'
-          : 'Ambiente marcado como produção. Revise o procedimento pelas capturas.';
+        this.releaseMessage = saved.test_authorized ? 'Teste liberado.' : 'Liberação desativada. Histórico preservado.';
       },
-      error: () => {
+      error: err => {
         this.savingPlaybackEnvironment = false;
-        this.playbackMessage = 'Não foi possível salvar a classificação do ambiente.';
+        this.releaseMessage = err.error?.detail || 'Não foi possível alterar a liberação.';
       },
     });
   }
@@ -94,15 +146,28 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    */
   get isReferenceManual():boolean{return !!this.guide?.steps?.some(step=>step.action_type==='reference');}
   getManualSection(index:number):string{const steps=this.guide?.steps||[];const title=(step:Step)=>step.annotations?.find((item:any)=>item.type==='manual_section')?.title||'';const current=steps[index]?title(steps[index]):'';return index===0||current!==title(steps[index-1])?current:'';}
-  async startPlayback(): Promise<void> {
+  async startPlayback(ownerTest = false): Promise<void> {
     if(this.isReferenceManual){this.playbackMessage='Este manual documenta telas observadas e deve ser consultado no editor ou PDF.';return;}
     if (!this.guide?.steps?.length || this.playbackStarting) return;
-    if (this.savingPlaybackEnvironment || this.guide.playback_environment !== 'test') {
-      this.playbackMessage = 'O Me guie ao vivo exige um guia classificado como homologação.';
+    if (this.savingPlaybackEnvironment || (ownerTest ? !this.isGuideOwner : !this.guide.can_start_playback)) {
+      this.playbackMessage = 'Aguarde a autorização Válido para Teste do criador.';
       return;
     }
     this.playbackStarting = true;
     this.playbackMessage = '';
+    try {
+      const access = await firstValueFrom(ownerTest ? this.guideService.previewTraining(this.guide.id) : this.guideService.playbackAccess(this.guide.id));
+      if (access.training_id) {
+        this.playbackStarting = false;
+        await this.router.navigate(['/trainings', access.training_id]);
+        return;
+      }
+    } catch (err:any) {
+      this.playbackStarting = false;
+      this.playbackMessage = err.error?.detail || 'O teste não está autorizado para sua conta.';
+      return;
+    }
+
     const firstUrl = this.guide.steps[0].url;
     let origin: string;
     try {
@@ -114,7 +179,7 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
     }
     const confirmed = await this.dialogs.confirm(
       `O roteiro começa em ${origin}. Se os endereços estiverem autorizados para testes, o Me guie abrirá outra aba e mostrará as instruções nela.`,
-      {title: 'Testar Me guie', confirmText: 'Iniciar teste'},
+      {title: 'Testar meu guia', confirmText: 'Iniciar teste'},
     );
     if (!confirmed || this.destroyed) {
       this.playbackStarting = false;
@@ -267,7 +332,20 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    * Inicializa o componente usando a rota e os serviços; dispara a carga inicial e os acompanhamentos declarados no corpo.
    * @returns void.
    */
+  private authorizationTimer?: ReturnType<typeof setInterval>;
+  private checkingAuthorization = false;
+  /** Atualiza somente permissões, preservando os textos ainda em edição. */
+  private refreshAuthorization(): void {
+    if(this.destroyed || this.checkingAuthorization || !this.guide || document.hidden)return;
+    this.checkingAuthorization=true;
+    this.refreshApprovals(this.guide.id);
+    this.guideService.getGuide(this.guideId).subscribe({
+      next: fresh=>{if(this.guide){this.guide.test_authorized=fresh.test_authorized;this.guide.can_start_playback=fresh.can_start_playback;}this.checkingAuthorization=false;},
+      error:()=>{if(this.guide)this.guide.can_start_playback=false;this.checkingAuthorization=false;}
+    });
+  }
   ngOnInit(): void {
+    this.authorizationTimer=setInterval(()=>this.refreshAuthorization(),10000);
     this.guideId = this.route.snapshot.paramMap.get('id') || '';
     if (this.guideId) {
       this.loadGuide();
@@ -280,6 +358,7 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    */
   ngOnDestroy(): void {
     this.destroyed = true;
+    clearInterval(this.authorizationTimer);
     this.cancelNarrationWait?.();
     this.clearPlaybackRequest();
     this.textTimers.forEach(timer=>clearTimeout(timer));
@@ -295,6 +374,7 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
     this.guideService.getGuide(this.guideId).subscribe({
       next: /* Aplica a resposta assíncrona ao estado desta operação no contexto do componente. | @param data — dados do contrato enviado ao serviço. | @returns void/undefined; efeitos nas operações do corpo. */ (data) => {
         this.guide = data;
+        this.refreshApprovals(data.id);
         this.guideTitle = data.title;
         if (this.route.snapshot.queryParamMap.get('generate') === 'voice') {
           this.router.navigate([], {relativeTo:this.route, queryParams:{generate:null}, queryParamsHandling:'merge', replaceUrl:true});
@@ -318,7 +398,8 @@ export class GuideEditorComponent implements OnInit, OnDestroy {
    * Expõe a autorização de edição recebida da API para habilitar os controles do editor.
    * @returns boolean.
    */
-  get canEdit(): boolean { return this.guide?.can_edit === true; }
+  get isGuideOwner(): boolean { return this.guide?.can_edit === true; }
+  get canEdit(): boolean { return this.isGuideOwner; }
   /**
    * Solicita a criação de um passo manual e incorpora o registro confirmado pela API ao editor.
    * @returns void.

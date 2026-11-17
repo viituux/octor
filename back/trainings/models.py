@@ -55,6 +55,9 @@ class QuizVersion(models.Model):
 
 
 class Participation(models.Model):
+    approved_at = models.DateTimeField(null=True, blank=True, editable=False)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                    null=True, blank=True, editable=False, related_name='+')
     identity_snapshot=models.JSONField(default=dict,blank=True)
     content_completed_at=models.DateTimeField(null=True,blank=True)
     quiz_attempt_limit=models.PositiveSmallIntegerField(default=1)

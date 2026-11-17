@@ -1,6 +1,14 @@
 /** Leitura visual somente: regiões úteis, máscaras temporárias e evidências medidas na viewport. */
 export function inspectManualPage(expectedUrl, position = null, cleanup = false, objective = '') {
   const maskId='__octor_manual_privacy_mask__',styleId='__octor_manual_capture_style__';
+  // Restaura somente as propriedades temporárias, sem sobrescrever mudanças do site.
+  for (const {element, properties} of globalThis.__octorManualPrivacy || []) {
+    for (const [name, value, priority] of properties) {
+      if (value) element.style.setProperty(name, value, priority);
+      else element.style.removeProperty(name);
+    }
+  }
+  globalThis.__octorManualPrivacy = [];
   if(cleanup){document.getElementById(maskId)?.remove();document.getElementById(styleId)?.remove();document.getElementById('__octor_manual_outline__')?.remove();return {ok:true};}
   const normalized=value=>{const u=new URL(value);u.hash='';return u.href;};
   if(normalized(location.href)!==normalized(expectedUrl))return {attention:'A URL mudou. Autorize outra coleta com o endereço final.'};
@@ -13,7 +21,7 @@ export function inspectManualPage(expectedUrl, position = null, cleanup = false,
     if(/just a moment|checking your browser|access denied|acesso negado|verifique se voc[eê] [eé] humano/i.test(document.title+' '+document.body.innerText.slice(0,300)))return {attention:'O site está solicitando uma verificação. Resolva-a na aba e continue.'};
     const main=document.querySelector('main,[role=main]')||document.body;
     if(main.getAttribute('aria-busy')==='true')return {waiting:true};
-    if(document.body.innerText.trim().length<40&&![...main.querySelectorAll('button,a,input,img,canvas')].some(el=>visible(el)&&((el.innerText||el.getAttribute('aria-label')||'').trim().length>1||el.naturalWidth>200)))return {waiting:true};
+    if(document.body.innerText.trim().length<40&&![...main.querySelectorAll('button,a,input,summary,img,canvas')].some(el=>visible(el)&&((el.innerText||el.getAttribute('aria-label')||'').trim().length>1||el.naturalWidth>200)))return {waiting:true};
     const maxScroll=Math.max(0,document.documentElement.scrollHeight-innerHeight);
     const mainBottom=Math.min(maxScroll,Math.max(0,main.getBoundingClientRect().bottom+scrollY-innerHeight));
     const positions=[],add=y=>{const top=Math.max(0,Math.min(maxScroll,Math.round(y)));if(positions.length<6&&positions.every(old=>(mainBottom===0 ? old!==top : Math.abs(old-top)>innerHeight*.55)))positions.push(top);};
@@ -44,7 +52,7 @@ export function inspectManualPage(expectedUrl, position = null, cleanup = false,
     return {positions,original_scroll:scrollY,title:document.title.slice(0,200)};
   }
   if(!document.getElementById(styleId)){
-    const style=document.createElement('style');style.id=styleId;style.textContent='html{scroll-behavior:auto!important}*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important}';document.documentElement.append(style);
+    const style=document.createElement('style');style.id=styleId;style.textContent='html{scroll-behavior:auto!important}*{caret-color:transparent!important}';document.documentElement.append(style);
   }
   scrollTo({top:position,behavior:'instant'});return {ready:true};
 }
@@ -54,18 +62,43 @@ export function readManualViewport(expectedUrl, probe = false) {
   if(u.href!==expected.href)throw new Error('A página mudou durante a captura.');
   const visible=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>0&&r.height>0&&r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth&&s.display!=='none'&&s.visibility!=='hidden'&&s.opacity!=='0'&&!el.closest('[hidden],[aria-hidden=true]');};
   if([...document.querySelectorAll('input[type=password]')].some(visible))throw new Error('Entre no sistema pela aba e depois continue a coleta.');
-  const masked=[...document.querySelectorAll('input,textarea,select,[contenteditable=true],[data-private]')].filter(visible);
-  if(!probe){
+  if (!probe) {
+    for (const {element, properties} of globalThis.__octorManualPrivacy || []) {
+      for (const [name, value, priority] of properties) {
+        if (value) element.style.setProperty(name, value, priority);
+        else element.style.removeProperty(name);
+      }
+    }
+    globalThis.__octorManualPrivacy = [];
     document.getElementById('__octor_manual_privacy_mask__')?.remove();
-    const mask=document.createElement('div');mask.id='__octor_manual_privacy_mask__';Object.assign(mask.style,{position:'fixed',inset:'0',zIndex:'2147483647',pointerEvents:'none'});
-    for(const el of masked){const r=el.getBoundingClientRect(),block=document.createElement('div');Object.assign(block.style,{position:'fixed',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px',background:'#e2e8f0',border:'1px solid #94a3b8',borderRadius:'4px'});mask.append(block);}
-    document.documentElement.append(mask);
+  }
+  // Campos vazios não contêm valores privados. Não desenhe retângulos sobre menus.
+  const masked=[...document.querySelectorAll('input,textarea,select,[contenteditable=true],[data-private]')]
+    .filter(el => visible(el) && (el.hasAttribute('data-private') ||
+      String(el.value ?? el.textContent ?? '').trim().length > 0));
+  if (!probe) {
+    const saved = new Set();
+    for (const field of masked) {
+      const privateBlock = field.hasAttribute('data-private');
+      for (const element of [field, ...field.querySelectorAll('*')]) {
+        if (saved.has(element)) continue;
+        saved.add(element);
+        const names = privateBlock ? ['visibility'] :
+          ['color', '-webkit-text-fill-color', 'text-shadow', 'caret-color'];
+        const properties = names.map(name => [name, element.style.getPropertyValue(name),
+          element.style.getPropertyPriority(name)]);
+        globalThis.__octorManualPrivacy.push({element, properties});
+        for (const name of names) element.style.setProperty(name,
+          privateBlock ? 'hidden' : name === 'text-shadow' ? 'none' : 'transparent', 'important');
+      }
+    }
   }
   const clean=value=>String(value||'').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[e-mail oculto]').replace(/\s+/g,' ').trim();
   const main=document.querySelector('main,[role=main]')||document.body;
   // Menus portais e cabeçalhos também fazem parte da tela após abrir um controle.
-  const roots=[main,...document.querySelectorAll('header,body>nav,[role=menu],[role=dialog],details[open]')];
-  const nodes=[...new Set(roots.flatMap(root=>[...root.querySelectorAll('h1,h2,h3,p,label,button,a,input:not([type=hidden]),select,[role=button],[role=tab]')]))].slice(0,2000);
+  const roots=[...document.querySelectorAll('[role=menu],[role=dialog],details[open]'),
+    ...document.querySelectorAll('header,body>nav'),main];
+  const nodes=[...new Set(roots.flatMap(root=>[...root.querySelectorAll('h1,h2,h3,p,label,summary,button,a,input:not([type=hidden]),select,[role=button],[role=tab],[role=menuitem]')]))].slice(0,2000);
   const controls=[],texts=[],seen=new Set();let length=0;
   for(const el of nodes){
     if(!visible(el)||el.closest('footer,aside,textarea,[contenteditable=true],#__octor_manual_privacy_mask__'))continue;
@@ -76,7 +109,7 @@ export function readManualViewport(expectedUrl, probe = false) {
     const r=el.getBoundingClientRect();const left=Math.max(0,r.left),top=Math.max(0,r.top),right=Math.min(innerWidth,r.right),bottom=Math.min(innerHeight,r.bottom);
     const hit=document.elementFromPoint((left+right)/2,(top+bottom)/2);if(hit&&hit!==el&&!el.contains(hit)&&!hit.contains(el))continue;
     if(length<4500&&!seen.has(label)){texts.push(label);seen.add(label);length+=label.length+1;}
-    if(controls.length<40&&(field||['A','BUTTON','H1','H2','H3'].includes(el.tagName)||['button','tab'].includes(el.getAttribute('role')))){
+    if(controls.length<40&&(field||['A','BUTTON','SUMMARY','H1','H2','H3'].includes(el.tagName)||['button','tab','menuitem'].includes(el.getAttribute('role')))){
       controls.push({label,role:field?'field':el.tagName==='A'?'link':/^H[123]$/.test(el.tagName)?'heading':'button',disabled:!!el.disabled||el.getAttribute('aria-disabled')==='true',rect:{left:Math.round(left),top:Math.round(top),width:Math.max(1,Math.round(right-left)),height:Math.max(1,Math.round(bottom-top))}});
     }
   }
@@ -85,20 +118,23 @@ export function readManualViewport(expectedUrl, probe = false) {
   if([...main.querySelectorAll('iframe')].some(visible))warnings.push('Há conteúdo em iframe: seus controles internos não foram inspecionados.');
   const heading=[...main.querySelectorAll('h1,h2,h3')].find(visible)?.innerText||document.title;
   const text=texts.join(' ').slice(0,5000);
-  const scene={url:u.href,scroll:scrollY,width:innerWidth,height:innerHeight,devicePixelRatio,signature:JSON.stringify({text,controls,images:images.map(img=>[img.complete,img.naturalWidth,img.naturalHeight]),scroll:scrollY,width:innerWidth,height:innerHeight,devicePixelRatio})};
+  const navigationState=[...document.querySelectorAll('[aria-expanded],details,[role=menu],[role=dialog]')]
+    .filter(visible).slice(0,80).map(el=>[el.tagName,el.getAttribute('aria-expanded'),el.open??null,
+      clean(el.innerText).slice(0,500)]);
+  const scene={url:u.href,scroll:scrollY,width:innerWidth,height:innerHeight,devicePixelRatio,signature:JSON.stringify({text,controls,navigationState,images:images.map(img=>[img.complete,img.naturalWidth,img.naturalHeight]),scroll:scrollY,width:innerWidth,height:innerHeight,devicePixelRatio})};
   return {url:u.href,title:document.title.slice(0,200)||'Página analisada',evidence:{heading:clean(heading).slice(0,200),text,controls,scroll_y:Math.max(0,Math.round(scrollY)),viewport_width:innerWidth,viewport_height:innerHeight,page_height:document.documentElement.scrollHeight,quality:{warnings,pending_images:pending,masked_fields:masked.length,stable:false,visual_content:images.length>0||[...main.querySelectorAll('video,canvas,iframe')].some(visible)}},scene};
 }
 
 
 /** Seleciona novamente o controle na pagina antes de qualquer interacao. */
-export function manualNavigation(expectedUrl, index = null, expectedLabel = '', preview = false, accountFlow = false, value = null) {
+export function manualNavigation(expectedUrl, index = null, expectedLabel = '', preview = false, accountFlow = false, value = null, expectedTarget = null) {
   if (location.href.split('#')[0] !== expectedUrl.split('#')[0]) return null;
   if (document.querySelector('input[type=password]:not([hidden])')) return null;
   const searchSelector = 'input[type=search],input[type=text][role=searchbox],input:not([type])[role=searchbox]';
   const candidates = [];
   const isYouTube = location.hostname === 'www.youtube.com';
   const avatar = isYouTube ? document.querySelector('ytd-masthead button#avatar-btn') : null;
-  for (const candidate of new Set([avatar, ...document.querySelectorAll(searchSelector + ',a[href],details:not([open]) > summary,button[aria-haspopup="menu"]:not([aria-expanded="true"]),button[aria-haspopup="true"]:not([aria-expanded="true"]),[role="button"][aria-haspopup="menu"]:not([aria-expanded="true"]),[role="button"][aria-haspopup="true"]:not([aria-expanded="true"]),ytd-account-item-renderer,ytd-compact-link-renderer,yt-list-item-view-model')])) {
+  for (const candidate of new Set([avatar, ...document.querySelectorAll(searchSelector + ',header button:not([type="submit"]),nav button:not([type="submit"]),[role="navigation"] button:not([type="submit"]),button[aria-expanded="false"],a[href],details:not([open]) > summary,button[aria-haspopup="menu"]:not([aria-expanded="true"]),button[aria-haspopup="true"]:not([aria-expanded="true"]),[role="button"][aria-haspopup="menu"]:not([aria-expanded="true"]),[role="button"][aria-haspopup="true"]:not([aria-expanded="true"]),ytd-account-item-renderer,ytd-compact-link-renderer,yt-list-item-view-model')])) {
     if (!candidate) continue;
     const accountItem = candidate.matches('ytd-account-item-renderer,ytd-compact-link-renderer,yt-list-item-view-model');
     const element = accountItem
@@ -111,7 +147,9 @@ export function manualNavigation(expectedUrl, index = null, expectedLabel = '', 
     if (element.matches('input') && !search) continue;
     const form = element.closest('form');
     if (form && (!search || form.querySelector('input[type=password]'))) continue;
-    const label = (element === avatar ? 'Menu da conta' : element.getAttribute('aria-label') || element.innerText || candidate.innerText || element.title || element.placeholder || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+    const labelled = element.getAttribute('aria-labelledby')?.split(/\s+/)
+      .map(id => document.getElementById(id)?.textContent || '').join(' ');
+    const label = (element === avatar ? 'Menu da conta' : element.getAttribute('aria-label') || labelled || element.innerText || candidate.innerText || element.title || element.placeholder || '').trim().replace(/\s+/g, ' ').slice(0, 120);
     if (!label || /@|logout|sign out|sair|excluir|delete|comprar|pagar|confirmar|remover|submit|desativar|unsubscribe|cancelar|checkout|purchase|add account|adicionar conta/i.test(label)) continue;
     let url = null;
     const youtubeSwitch = isYouTube &&
@@ -130,11 +168,17 @@ export function manualNavigation(expectedUrl, index = null, expectedLabel = '', 
   }
   candidates.sort((a, b) => Number(a.kind === 'page') - Number(b.kind === 'page'));
   candidates.length = Math.min(40, candidates.length);
-  if (index === null) return candidates.map(({label, kind}) => ({label, kind}));
+  const registry = globalThis.__octorManualTargets ||= {elements:new WeakMap(),next:0,documentId:crypto.randomUUID()};
+  const identity = element => {
+    if(!registry.elements.has(element))registry.elements.set(element,registry.documentId+':'+(++registry.next));
+    return registry.elements.get(element);
+  };
+  if (index === null) return candidates.map(({label, kind, element}) => ({label, kind, targetId:identity(element), selector:element.tagName.toLowerCase()+(element.id?'#'+CSS.escape(element.id):'')}));
   // A ordem do DOM pode mudar enquanto o Gemini processa a captura.
   const matches = candidates.filter(candidate => candidate.label === expectedLabel);
   if (matches.length !== 1) return null;
   const [target] = matches;
+  if (expectedTarget !== null && identity(target.element) !== expectedTarget) return null;
   if (preview) {
     const bounds = target.element.getBoundingClientRect();
     document.getElementById('__octor_manual_outline__')?.remove();

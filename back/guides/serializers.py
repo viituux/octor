@@ -225,6 +225,19 @@ class GuideAccessMixin:
 
 
 class GuideDetailSerializer(GuideAccessMixin, serializers.ModelSerializer):
+    test_authorized = serializers.SerializerMethodField()
+    can_start_playback = serializers.SerializerMethodField()
+
+    def get_test_authorized(self, obj):
+        from .authorization import is_test_authorized
+        return is_test_authorized(obj)
+
+    def get_can_start_playback(self, obj):
+        from .authorization import assigned_training
+        request = self.context.get('request')
+        return bool(request and self.get_test_authorized(obj) and
+                    (obj.owner_id == request.user.id or assigned_training(obj, request.user)))
+
     can_edit = serializers.SerializerMethodField()
     is_favorite = serializers.SerializerMethodField()
     shared_directly = serializers.SerializerMethodField()
@@ -272,7 +285,7 @@ class GuideDetailSerializer(GuideAccessMixin, serializers.ModelSerializer):
     class Meta:
         model = Guide
         fields = [
-            "playback_environment",
+            "playback_environment", "test_authorized", "test_authorized_at", "test_authorized_by", "can_start_playback",
             "id",
             "title",
             "description",
