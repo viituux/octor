@@ -220,5 +220,13 @@ GEMINI_TTS_VOICE = os.getenv("GEMINI_TTS_VOICE", "Kore")
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.1-flash-lite').strip()
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '').strip()
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini').strip()
 
 PENDENCIA_TTL_HORAS = int(os.getenv('PENDENCIA_TTL_HORAS', '24'))
+
+# Controles de consumo: políticas/preços são administrados no banco, não no navegador.
+AI_CIRCUIT_FAILURES = int(os.getenv('AI_CIRCUIT_FAILURES', '3'))
+AI_CIRCUIT_SECONDS = int(os.getenv('AI_CIRCUIT_SECONDS', '60'))
+AI_CONNECT_RETRY_SECONDS = float(os.getenv('AI_CONNECT_RETRY_SECONDS', '0.5'))
+AI_SPEECH_MAX_OUTPUT_TOKENS = int(os.getenv('AI_SPEECH_MAX_OUTPUT_TOKENS', '8192'))

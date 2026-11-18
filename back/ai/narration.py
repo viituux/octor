@@ -1,3 +1,5 @@
+from .gateway import metered_post, server_key
+from .usage import scoped, AIControlError, PUBLIC_AI_UNAVAILABLE
 # Áudio individual ou compartilhado é associado ao intervalo do passo, transcrito e reaproveitado somente quando a origem continua válida.
 """Transcribe saved narration once and associate speech with recorded step intervals."""
 # Dependência: codificação de mídia binária no formato aceito pelo provedor.
@@ -70,8 +72,8 @@ def transcript_for(step):
 # Retorno: mapping.
 # Falhas explícitas no fluxo: GenerationError, ValueError. Consulte os blocos try/except para as conversões locais.
 def transcribe_audio(audio, timeline):
-    if settings.LLM_PROVIDER != 'gemini' or not settings.LLM_API_KEY:
-        raise GenerationError('A geração pela voz requer Gemini configurado no servidor.')
+    if settings.LLM_PROVIDER != 'gemini' or not server_key(settings.LLM_API_KEY):
+        raise GenerationError(PUBLIC_AI_UNAVAILABLE)
     # A margem considera o crescimento de base64 e do JSON antes de montar a requisição inline.
     if audio.size > 14 * 1024 * 1024:
         raise GenerationError('Este áudio excede o tamanho suportado para gerar instruções pela voz (14 MB). O áudio e os textos foram preservados.')
@@ -87,9 +89,9 @@ def transcribe_audio(audio, timeline):
                   'Use exatamente os IDs fornecidos. Para cada ID, transcreva somente o intervalo start/end em segundos. '
                   'Se start/end forem null, use o áudio inteiro. Intervalos vazios ou silêncio recebem string vazia. '
                   'Não associe a fala de outro intervalo ao passo. Não inclua senhas ou tokens. Intervalos: ' + json.dumps(timeline))
-        response = requests.post(
+        response = metered_post(
             'https://generativelanguage.googleapis.com/v1beta/models/' + (settings.LLM_MODEL or 'gemini-3-flash-preview') + ':generateContent',
-            headers={'x-goog-api-key':settings.LLM_API_KEY}, timeout=(10, 120),
+            headers={'x-goog-api-key':server_key(settings.LLM_API_KEY)}, timeout=(10, 120),
             json={'contents':[{'parts':[{'text':prompt},{'inlineData':{'mimeType':mime,'data':data}}]}],
                   'generationConfig':{'temperature':0,'maxOutputTokens':16384,'responseMimeType':'application/json'}})
         if not response.ok:
@@ -111,15 +113,18 @@ def transcribe_audio(audio, timeline):
     except GenerationError:
         raise
     except requests.exceptions.Timeout:
-        raise GenerationError('A transcrição da voz demorou para responder. Tente novamente; o áudio e os textos foram preservados.') from None
+        raise GenerationError(PUBLIC_AI_UNAVAILABLE + ' O áudio e os textos foram preservados.') from None
+    except AIControlError:
+        raise
     except Exception:
-        raise GenerationError('Não foi possível transcrever a narração. Tente novamente; o áudio e os textos foram preservados.') from None
+        raise GenerationError(PUBLIC_AI_UNAVAILABLE + ' O áudio e os textos foram preservados.') from None
 
 
 # Prepara as transcrições do guia/passos e evita reaproveitar texto de uma origem de áudio alterada.
 # Parâmetros — guide: instância do procedimento.
 # Parâmetros — step: instância do passo do procedimento.
 # Retorno: resultado de len(...).
+@scoped('transcription')
 def prepare_narration(guide, step=None):
     steps = [step] if step else list(guide.steps.all())
     groups = {}

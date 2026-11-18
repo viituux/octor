@@ -1,3 +1,5 @@
+from .gateway import metered_post, server_key, provider_options
+from .usage import scoped, AIControlError, PUBLIC_AI_UNAVAILABLE
 # Geração textual com provedores externos. O fluxo reúne contexto/imagem, consulta o provedor e só persiste instruções após validar o resultado.
 # Dependência: codificação de mídia binária no formato aceito pelo provedor.
 import base64
@@ -20,7 +22,8 @@ from django.db import transaction
 # Dependência: contratos e funções do módulo .prompts reutilizados neste fluxo.
 from .prompts import DEFAULT_STEP_PROMPT, build_generation_brief, resolve_generation_brief, prompt_digest
 from .credentials import CredentialError, connection_for, reveal
-from .gateway import provider_credentials
+
+PUBLIC_STEP_FAILURE = PUBLIC_AI_UNAVAILABLE + ' O texto atual foi preservado.'
 
 
 # Monta a instrução enviada ao provedor com as evidências e a orientação selecionada para o passo.
@@ -58,16 +61,16 @@ def get_step_prompt(step, custom_prompt=""):
 # Traduz o status HTTP do provedor em mensagem funcional sem retransmitir seu corpo de resposta.
 # Parâmetros — status_code: status HTTP retornado pelo provedor.
 # Retorno: str.
+class ProviderResponseError(str):
+    def __new__(cls, message, status_code):
+        value=super().__new__(cls,message);value.status_code=status_code;return value
+
+
 def provider_error(status_code):
-    if status_code in (401, 403):
-        return 'A credencial de IA foi recusada ou não tem permissão. Contate o administrador.'
-    if status_code == 404:
-        return 'O modelo de IA configurado não está disponível para esta conta. Contate o administrador.'
-    if status_code == 429:
-        return 'O limite de uso da IA foi atingido. Aguarde e tente novamente.'
-    if status_code in (500, 502, 503, 504):
-        return 'O serviço de IA está temporariamente indisponível ou sobrecarregado. Aguarde e tente novamente.'
-    return 'O serviço de IA recusou a solicitação. Contate o administrador.'
+    # Nunca devolve ao usuário detalhes sobre credencial, provedor, modelo,
+    # cota ou status HTTP. Esses dados ficam em AIUsage.error_kind para o
+    # painel exclusivo dos desenvolvedores master.
+    return PUBLIC_AI_UNAVAILABLE
 
 
 # Consulta o Gemini com texto e imagem opcional e interpreta a resposta de geração.
@@ -104,11 +107,7 @@ def call_gemini_vision(api_key, prompt, image_bytes, mime_type="image/jpeg", *, 
             responseSchema=response_schema,
         )
 
-    for attempt in range(2):
-        res = requests.post(url, headers={"x-goog-api-key": api_key}, json=payload, timeout=(10, 90))
-        if res.status_code not in (500, 502, 503, 504) or attempt == 1:
-            break
-        time.sleep(1)
+    res = metered_post(url, headers={"x-goog-api-key": api_key}, json=payload, timeout=(10, 90), allow_redirects=False)
     if res.ok:
         data = res.json()
         candidates = data.get("candidates", [])
@@ -128,7 +127,7 @@ def call_gemini_vision(api_key, prompt, image_bytes, mime_type="image/jpeg", *, 
             if parts and parts[-1].get("text"):
                 return parts[-1]["text"].strip(), None
     else:
-        err_msg = provider_error(res.status_code)
+        err_msg = ProviderResponseError(provider_error(res.status_code),res.status_code)
         return None, err_msg
     return None, None
 
@@ -155,20 +154,20 @@ def call_openai_vision(api_key, prompt, image_bytes, mime_type="image/png", *, r
         })
 
     payload = {
-        "model": model or (settings.LLM_MODEL if settings.LLM_PROVIDER == 'openai' else '') or "gpt-4o-mini",
+        "model": model or settings.OPENAI_MODEL,
         "messages": [{"role": "user", "content": content}],
         "max_tokens": 1200,
         "temperature": 0.2
     }
 
-    res = requests.post(url, headers=headers, json=payload, timeout=25)
+    res = metered_post(url, headers=headers, json=payload, timeout=25)
     if res.ok:
         data = res.json()
         choices = data.get("choices", [])
         if choices:
             return choices[0].get("message", {}).get("content", "").strip(), None
     else:
-        err_msg = provider_error(res.status_code)
+        err_msg = ProviderResponseError(provider_error(res.status_code),res.status_code)
         return None, err_msg
     return None, None
 
@@ -205,7 +204,7 @@ def call_anthropic_vision(api_key, prompt, image_bytes, mime_type="image/png"):
         "max_tokens": 1200
     }
 
-    res = requests.post(url, headers=headers, json=payload, timeout=25)
+    res = metered_post(url, headers=headers, json=payload, timeout=25)
     if res.ok:
         data = res.json()
         parts = data.get("content", [])
@@ -234,19 +233,17 @@ def configured_provider(guide=None, actor=None):
             return reveal(connection.gemini_secret), call_gemini_vision
         except CredentialError as exc:
             raise GenerationError(str(exc)) from None
-    return settings.LLM_API_KEY, providers.get(settings.LLM_PROVIDER)
+    return (server_key(settings.LLM_API_KEY,provider=settings.LLM_PROVIDER)
+            if settings.LLM_PROVIDER in ('gemini','openai') else settings.LLM_API_KEY), providers.get(settings.LLM_PROVIDER)
 
 
 def configured_providers(guide=None, actor=None):
-    """Lista principal/reservas; uma chave pessoal Gemini continua tendo precedência."""
     connection = connection_for(guide, actor) if guide is not None else None
     if connection and connection.gemini_secret:
-        try:
-            return [(reveal(connection.gemini_secret), call_gemini_vision, settings.LLM_MODEL)]
-        except CredentialError as exc:
-            raise GenerationError(str(exc)) from None
-    adapters = {'gemini': call_gemini_vision, 'openai': call_openai_vision}
-    return [(item.secret, adapters[item.provider], item.model) for item in provider_credentials() if item.provider in adapters]
+        try:return [(reveal(connection.gemini_secret),call_gemini_vision,settings.GEMINI_MODEL)]
+        except CredentialError as exc:raise GenerationError(str(exc)) from None
+    adapters={'gemini':call_gemini_vision,'openai':call_openai_vision}
+    return [(key,adapters[provider],model) for provider,key,model,_item in provider_options('text')]
 
 
 # Prepara e valida a geração antes de substituir instruções; falhas preservam os textos já existentes.
@@ -256,10 +253,11 @@ def configured_providers(guide=None, actor=None):
 # Parâmetros — force_automatic_prompt: booleano para recompor a orientação automática.
 # Retorno: steps.
 # Falhas explícitas no fluxo: GenerationError. Consulte os blocos try/except para as conversões locais.
+@scoped('instructions', connection=True)
 def generate_steps(guide, custom_prompt="", step=None, force_automatic_prompt=False):
     providers = configured_providers(guide)
     if not providers:
-        raise GenerationError('A geração de passos ainda não foi configurada pelo administrador.')
+        raise GenerationError(PUBLIC_STEP_FAILURE)
     steps = [step] if step is not None else list(guide.steps.all())
     if not steps:
         raise GenerationError('Este guia ainda não possui capturas para gerar instruções.')
@@ -277,21 +275,23 @@ def generate_steps(guide, custom_prompt="", step=None, force_automatic_prompt=Fa
                 raise GenerationError('Não foi possível ler a captura deste passo. O texto atual foi preservado.') from None
         prompt, automatic_prompt = (build_generation_brief(current), True) if force_automatic_prompt else resolve_generation_brief(current, custom_prompt)
         try:
-            text = error = None
-            for key, provider, model in providers:
-                text, error = provider(key, get_step_prompt(current, prompt), image_bytes, mime_type, model=model)
-                if not error or not any(fragment in error for fragment in ('credencial', 'temporariamente indisponível', 'sobrecarregado')):
+            text=error=None
+            for position,(key,provider,model) in enumerate(providers):
+                text,error=provider(key,get_step_prompt(current,prompt),image_bytes,mime_type,model=model)
+                if not error or getattr(error,'status_code',None)!=401 or position==len(providers)-1:
                     break
         except requests.exceptions.Timeout:
-            raise GenerationError('A IA demorou para responder. Tente novamente. O texto atual foi preservado.') from None
+            raise GenerationError(PUBLIC_STEP_FAILURE) from None
         except requests.exceptions.ConnectionError:
-            raise GenerationError('Não foi possível conectar o servidor ao serviço de IA. Verifique a conexão do servidor. O texto atual foi preservado.') from None
+            raise GenerationError(PUBLIC_STEP_FAILURE) from None
+        except AIControlError:
+            raise
         except Exception:
-            raise GenerationError('Não foi possível acessar o serviço de IA. Tente novamente. O texto atual foi preservado.') from None
+            raise GenerationError(PUBLIC_STEP_FAILURE) from None
         if error:
             raise GenerationError(error + ' O texto atual foi preservado.')
         if not isinstance(text, str) or not text.strip():
-            raise GenerationError('A IA não conseguiu gerar o passo. Tente novamente. O texto atual foi preservado.')
+            raise GenerationError(PUBLIC_STEP_FAILURE)
         results.append((current, text.strip(), prompt, automatic_prompt))
     # Só persiste o conjunto validado: uma geração parcial com falha não deve substituir instruções existentes.
     with transaction.atomic():

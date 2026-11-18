@@ -1,3 +1,5 @@
+from .gateway import metered_speech, server_key
+from .usage import usage_scope, PUBLIC_AI_UNAVAILABLE
 """Chave própria para instruções e narração gerada com a integração do servidor."""
 import base64
 import io
@@ -77,13 +79,13 @@ class SpeechInput(serializers.Serializer):
 
 def synthesize(text):
     """Pede ao Gemini TTS um WAV, usando exclusivamente a credencial do servidor."""
-    key = settings.GEMINI_TTS_API_KEY or (settings.LLM_API_KEY if settings.LLM_PROVIDER == 'gemini' else '')
+    key = server_key(settings.GEMINI_TTS_API_KEY or (settings.LLM_API_KEY if settings.LLM_PROVIDER == 'gemini' else ''), 'speech')
     if not key:
-        raise CredentialError('A narração Gemini ainda não está configurada no servidor.')
+        raise CredentialError(PUBLIC_AI_UNAVAILABLE)
 
     max_audio = 10 * 1024 * 1024
     try:
-        with requests.post(
+        with metered_speech(
             'https://generativelanguage.googleapis.com/v1beta/interactions',
             headers={'x-goog-api-key': key, 'Accept': 'application/json'},
             json={
@@ -95,23 +97,24 @@ def synthesize(text):
                                      'style': 'Leia em português do Brasil, com voz clara, ritmo calmo e tom instrucional.'}],
                 }]}],
                 'response_format': {'type': 'audio', 'mime_type': 'audio/wav'},
-                'generation_config': {'speech_config': [{'voice': settings.GEMINI_TTS_VOICE}]},
+                'generation_config': {'max_output_tokens': settings.AI_SPEECH_MAX_OUTPUT_TOKENS, 'speech_config': [{'voice': settings.GEMINI_TTS_VOICE}]},
             },
             timeout=(8, 90), stream=True, allow_redirects=False,
-        ) as response:
+        ) as (response, lease):
             if response.status_code in (401, 403):
-                raise CredentialError('O Gemini recusou o acesso à narração. O responsável pelo servidor deve verificar a chave e o modelo.')
+                raise CredentialError(PUBLIC_AI_UNAVAILABLE)
             if response.status_code in (402, 429):
-                raise CredentialError('O Gemini atingiu o limite de uso para gerar áudio. Tente novamente mais tarde.')
+                raise CredentialError(PUBLIC_AI_UNAVAILABLE)
             if response.status_code != 200:
-                raise CredentialError('O Gemini não conseguiu gerar a narração. Confira a configuração do servidor e tente novamente.')
+                raise CredentialError(PUBLIC_AI_UNAVAILABLE)
             body = bytearray()
             for chunk in response.iter_content(chunk_size=65536):
                 body.extend(chunk)
                 if len(body) > (max_audio * 4 // 3) + 65536:
                     raise CredentialError('O áudio gerado ultrapassou o limite de 10 MB.')
 
-        interaction = json.loads(body)
+            interaction = json.loads(body)
+            lease.finish(interaction)
         encoded = next(
             block['data']
             for step in interaction['steps'] if step['type'] == 'model_output'
@@ -127,9 +130,9 @@ def synthesize(text):
                 raise ValueError('WAV incompleto')
         return audio
     except requests.exceptions.RequestException:
-        raise CredentialError('Não foi possível concluir a narração com o Gemini. Tente novamente.') from None
+        raise CredentialError(PUBLIC_AI_UNAVAILABLE) from None
     except (ValueError, KeyError, TypeError, StopIteration, EOFError, wave.Error):
-        raise CredentialError('O Gemini não devolveu um arquivo de áudio válido. Tente novamente.') from None
+        raise CredentialError(PUBLIC_AI_UNAVAILABLE) from None
 
 
 def has_live_narration(step):
@@ -159,7 +162,8 @@ class GenerateSpeechView(APIView):
             return Response({'detail': 'Confirme a substituição da narração existente.'}, status=409)
 
         try:
-            audio = synthesize(text)
+            with usage_scope(request.user.pk, guide.workspace_id, 'speech'):
+                audio = synthesize(text)
         except CredentialError as exc:
             return Response({'detail': str(exc)}, status=503)
 
