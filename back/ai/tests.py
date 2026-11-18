@@ -15,6 +15,7 @@ from .credentials import protect
 from .gateway import candidates, provider_options
 from .models import AIProviderKey
 from .usage import usage_scope
+from manuals.services import navigation_labels_match
 
 
 @override_settings(
@@ -55,6 +56,18 @@ class ProviderPoolTests(TestCase):
                 ('gemini','env-gemini','gemini-test'),
                 ('openai','env-openai','openai-test'),
             ])
+
+
+class ManualNavigationLabelTests(TestCase):
+    def test_accepts_accessible_description_after_visible_button_name(self):
+        self.assertTrue(navigation_labels_match(
+            'Criar quadro',
+            'Criar quadro Um quadro é feito de cartões ordenados em listas.',
+        ))
+
+    def test_rejects_different_or_overly_short_labels(self):
+        self.assertFalse(navigation_labels_match('Criar','Criar quadro'))
+        self.assertFalse(navigation_labels_match('Criar cartão','Criar quadro'))
 
 @override_settings(LLM_PROVIDER='gemini', LLM_API_KEY='server-test-secret', LLM_MODEL='test-vision')
 class StepGenerationTests(TestCase):

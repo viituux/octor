@@ -11,6 +11,21 @@ from .serializers import DocumentInput
 
 logger=logging.getLogger(__name__)
 
+
+def navigation_labels_match(provided, observed):
+    """Aceita o nome visível ou seu prefixo acessível, mantendo o alvo_id como autoridade."""
+    clean=lambda value:' '.join(str(value or '').split()).casefold()
+    provided=clean(provided);observed=clean(observed)
+    if not provided or not observed:
+        return False
+    if provided == observed:
+        return True
+    # Sites frequentemente concatenam ao nome do botão uma descrição acessível.
+    # Um prefixo com ao menos quatro caracteres evita aceitar rótulos genéricos vazios.
+    return len(provided.split()) >= 2 and len(provided) >= 4 and observed.startswith(provided) and (
+        len(observed) == len(provided) or observed[len(provided)] in ' :-–—.('
+    )
+
 class ManualGenerationError(Exception):
     def __init__(self,message,code='provider_error'):
         super().__init__(message)
@@ -411,7 +426,7 @@ def plan_manual_navigation(objective, controls, visited, page=None, screenshot=N
                             target = named_targets[0]
                             context += '\nA decisão anterior contradiz o rótulo explicitamente solicitado. A tela contém o controle: ' + json.dumps(dict(controls[target], alvo_id=target), ensure_ascii=False)
                             continue
-                        if (0 <= index < len(controls) and click.rotulo == controls[index]['label'] and click.texto_do_passo.strip()
+                        if (0 <= index < len(controls) and navigation_labels_match(click.rotulo,controls[index]['label']) and click.texto_do_passo.strip()
                                 and normalize(controls[index]['label']) not in visited_labels):
                             if typing != (controls[index].get('kind') == 'search'):
                                 continue
@@ -426,8 +441,8 @@ def plan_manual_navigation(objective, controls, visited, page=None, screenshot=N
                                     return {'index': None, 'reason': 'unsure'}
                                 decision['value'] = value
                             return decision
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as error:
+            logger.warning('manual_navigation_invalid attempt=%s tool=%s error=%s',attempt+1,getattr(call,'name',None),type(error).__name__)
         if attempt < 2:
             time.sleep(0.25 * 2 ** attempt)
     return failure
