@@ -19,3 +19,24 @@ class AIConnection(models.Model):
                 name='ai_connection_exactly_one_scope',
             ),
         ]
+
+
+class AIProviderKey(models.Model):
+    """Credencial global administrada pelos desenvolvedores, nunca enviada ao cliente."""
+    PROVIDERS = (("gemini", "Google Gemini"), ("openai", "OpenAI"))
+
+    name = models.CharField(max_length=100, unique=True)
+    provider = models.CharField(max_length=20, choices=PROVIDERS)
+    encrypted_secret = models.TextField()
+    model = models.CharField(max_length=120, blank=True)
+    priority = models.PositiveSmallIntegerField(default=100)
+    active = models.BooleanField(default=True)
+    backup_authorized = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("priority", "id")
+
+    def __str__(self):
+        return f"{self.name} ({self.provider})"

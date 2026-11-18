@@ -20,6 +20,7 @@ from django.db import transaction
 # Dependência: contratos e funções do módulo .prompts reutilizados neste fluxo.
 from .prompts import DEFAULT_STEP_PROMPT, build_generation_brief, resolve_generation_brief, prompt_digest
 from .credentials import CredentialError, connection_for, reveal
+from .gateway import provider_credentials
 
 
 # Monta a instrução enviada ao provedor com as evidências e a orientação selecionada para o passo.
@@ -75,8 +76,8 @@ def provider_error(status_code):
 # Parâmetros — image_bytes: bytes da captura ou ausência de imagem.
 # Parâmetros — mime_type: tipo MIME associado à imagem.
 # Retorno: tupla.
-def call_gemini_vision(api_key, prompt, image_bytes, mime_type="image/jpeg", *, response_schema=None):
-    model = settings.LLM_MODEL if settings.LLM_PROVIDER == 'gemini' else ''
+def call_gemini_vision(api_key, prompt, image_bytes, mime_type="image/jpeg", *, response_schema=None, model=None):
+    model = model or (settings.LLM_MODEL if settings.LLM_PROVIDER == 'gemini' else '')
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model or 'gemini-3.1-flash-lite'}:generateContent"
     
     parts = [{"text": prompt}]
@@ -138,7 +139,7 @@ def call_gemini_vision(api_key, prompt, image_bytes, mime_type="image/jpeg", *, 
 # Parâmetros — image_bytes: bytes da captura ou ausência de imagem.
 # Parâmetros — mime_type: tipo MIME associado à imagem.
 # Retorno: tupla.
-def call_openai_vision(api_key, prompt, image_bytes, mime_type="image/png"):
+def call_openai_vision(api_key, prompt, image_bytes, mime_type="image/png", *, response_schema=None, model=None):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -154,7 +155,7 @@ def call_openai_vision(api_key, prompt, image_bytes, mime_type="image/png"):
         })
 
     payload = {
-        "model": settings.LLM_MODEL or "gpt-4o-mini",
+        "model": model or (settings.LLM_MODEL if settings.LLM_PROVIDER == 'openai' else '') or "gpt-4o-mini",
         "messages": [{"role": "user", "content": content}],
         "max_tokens": 1200,
         "temperature": 0.2
@@ -236,6 +237,18 @@ def configured_provider(guide=None, actor=None):
     return settings.LLM_API_KEY, providers.get(settings.LLM_PROVIDER)
 
 
+def configured_providers(guide=None, actor=None):
+    """Lista principal/reservas; uma chave pessoal Gemini continua tendo precedência."""
+    connection = connection_for(guide, actor) if guide is not None else None
+    if connection and connection.gemini_secret:
+        try:
+            return [(reveal(connection.gemini_secret), call_gemini_vision, settings.LLM_MODEL)]
+        except CredentialError as exc:
+            raise GenerationError(str(exc)) from None
+    adapters = {'gemini': call_gemini_vision, 'openai': call_openai_vision}
+    return [(item.secret, adapters[item.provider], item.model) for item in provider_credentials() if item.provider in adapters]
+
+
 # Prepara e valida a geração antes de substituir instruções; falhas preservam os textos já existentes.
 # Parâmetros — guide: instância do procedimento.
 # Parâmetros — custom_prompt: orientação textual opcional fornecida para geração.
@@ -244,8 +257,8 @@ def configured_provider(guide=None, actor=None):
 # Retorno: steps.
 # Falhas explícitas no fluxo: GenerationError. Consulte os blocos try/except para as conversões locais.
 def generate_steps(guide, custom_prompt="", step=None, force_automatic_prompt=False):
-    key, provider = configured_provider(guide)
-    if not key or not provider:
+    providers = configured_providers(guide)
+    if not providers:
         raise GenerationError('A geração de passos ainda não foi configurada pelo administrador.')
     steps = [step] if step is not None else list(guide.steps.all())
     if not steps:
@@ -264,7 +277,11 @@ def generate_steps(guide, custom_prompt="", step=None, force_automatic_prompt=Fa
                 raise GenerationError('Não foi possível ler a captura deste passo. O texto atual foi preservado.') from None
         prompt, automatic_prompt = (build_generation_brief(current), True) if force_automatic_prompt else resolve_generation_brief(current, custom_prompt)
         try:
-            text, error = provider(key, get_step_prompt(current, prompt), image_bytes, mime_type)
+            text = error = None
+            for key, provider, model in providers:
+                text, error = provider(key, get_step_prompt(current, prompt), image_bytes, mime_type, model=model)
+                if not error or not any(fragment in error for fragment in ('credencial', 'temporariamente indisponível', 'sobrecarregado')):
+                    break
         except requests.exceptions.Timeout:
             raise GenerationError('A IA demorou para responder. Tente novamente. O texto atual foi preservado.') from None
         except requests.exceptions.ConnectionError:

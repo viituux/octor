@@ -20,3 +20,20 @@ A rota legada de geração do guia continua disponível, com gravação atômica
 Referência Gemini: https://ai.google.dev/api/generate-content (generateContent com imagem e autenticação via cabeçalho x-goog-api-key).
 
 O endpoint de geração aceita prompt_mode (automatic ou manual). Em modo automático, o backend recompõe a orientação com o contexto atual; o campo generation_prompt_suggestion da resposta fornece a sugestão e generation_prompt_mode identifica o modo. A origem automática é registrada nas anotações do passo sem alterar capturas ou narração.
+## Pool administrativo de provedores
+
+As credenciais globais são cadastradas por um superusuário em `/admin/ai/aiproviderkey/`.
+O campo `Nova chave` é somente de escrita: o valor é criptografado com
+`OCTOR_AI_ENCRYPTION_KEY` e nunca volta para a interface ou para os logs.
+
+Ordene as entradas por `priority`. A primeira credencial ativa é a principal; as demais
+só participam da contingência quando `backup_authorized` estiver marcado. O pool aceita
+`gemini` e `openai`. Informe o modelo por entrada (por exemplo,
+`gemini-3.1-flash-lite` ou `gpt-4o-mini`).
+
+O OCTOR tenta a próxima credencial apenas para rejeição de autenticação e respostas
+confirmadas de indisponibilidade do provedor. Não alterna em erros de cota (`402`/`429`)
+e não repete depois de timeout, evitando contornar limites ou duplicar processamento.
+
+Antes de cadastrar credenciais, aplique `python manage.py migrate`. Chaves divulgadas
+em conversas, tickets ou commits devem ser revogadas e substituídas.

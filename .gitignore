@@ -36,3 +36,5 @@ back/private_trainings/
 /extensao/tests/
 /back/**/test_*.py
 /back/**/tests.py
+!/back/ai/tests.py
+!/back/config/test_settings.py
