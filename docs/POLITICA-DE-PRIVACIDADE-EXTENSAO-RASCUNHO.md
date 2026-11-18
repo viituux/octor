@@ -5,7 +5,7 @@
 ## 1. Responsável e contato
 O OCTOR é uma plataforma de documentação e treinamento de procedimentos no navegador.
 - Controlador/operador responsável: **[PREENCHER RAZÃO SOCIAL OU RESPONSÁVEL]**
-- Contato de privacidade: **[PREENCHER E-MAIL]**
+- Contato de privacidade: **joaomarques210103@gmail.com**
 - Data de vigência: **[PREENCHER APÓS APROVAÇÃO]**
 
 ## 2. Dados tratados
