@@ -207,10 +207,12 @@
 }
 /* O app-root isola o z-index negativo do fundo da pilha da página. */
 .bg-tentacle { position: fixed; inset: 0; z-index: -1; pointer-events: none; background-image: var(--bg-tentacle); background-repeat: no-repeat; background-position: right bottom; background-size: min(48vw, 680px) auto; opacity: .04; }
-/* Só as superfícies de página ficam transparentes; cartões, campos e diálogos preservam legibilidade. */
+/* Superfícies opacas evitam que a arte decorativa atravesse formulários e painéis. */
 @media screen {
  app-root > :not(.bg-tentacle):not(app-release):not(app-dialog):not(router-outlet),
- .library, .auth-shell, .form-area, .account-shell, .editor-shell, .paper { background: transparent !important; }
+ .library, .auth-shell, .form-area, .account-shell, .editor-shell, .paper {
+  background-color: var(--bg-main) !important;
+ }
 }
 @media (max-width: 768px) {
  .bg-tentacle { background-size: 60vw auto; background-position: right bottom; opacity: .04; }
